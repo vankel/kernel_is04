@@ -2,6 +2,23 @@
 #define _INPUT_H
 
 /*
+ * Certain software is contributed or developed by TOSHIBA CORPORATION.
+ *
+ * Copyright (C) 2010 TOSHIBA CORPORATION All rights reserved.
+ *
+ * This software is licensed under the terms of the GNU General Public
+ * License version 2, as published by FSF, and
+ * may be copied, distributed, and modified under those terms.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * This code is based on input.h.
+ * The original copyright and notice are described below.
+ */
+/*
  * Copyright (c) 1999-2002 Vojtech Pavlik
  *
  * This program is free software; you can redistribute it and/or modify it
@@ -375,6 +392,14 @@ struct input_absinfo {
 #define KEY_DISPLAY_OFF		245	/* display device to off state */
 
 #define KEY_WIMAX		246
+
+//CHANGE_RSST Start
+#define KEY_CHG_ST_NONE 341
+#define KEY_CHG_ST_OVP  342
+#define KEY_CHG_ST_OVC  343
+#define KEY_CHG_ST_OVD  344
+#define KEY_CHG_ST_EXP  345
+//CHANGE_RSST End
 
 /* Range 248 - 255 is reserved for special needs of AT keyboard driver */
 

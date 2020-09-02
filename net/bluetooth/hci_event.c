@@ -1,4 +1,21 @@
 /*
+ * Certain software is contributed or developed by TOSHIBA CORPORATION.
+ *
+ * Copyright (C) 2010 TOSHIBA CORPORATION All rights reserved.
+ *
+ * This software is licensed under the terms of the GNU General Public
+ * License version 2, as published by FSF, and
+ * may be copied, distributed, and modified under those terms.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * This code is based on hci_event.c.
+ * The original copyright and notice are described below.
+ */
+/*
    BlueZ - Bluetooth protocol stack for Linux
    Copyright (c) 2000-2001, 2010, Code Aurora Forum. All rights reserved.
 
@@ -887,6 +904,10 @@ static inline void hci_conn_complete_evt(struct hci_dev *hdev, struct sk_buff *s
 		if (conn->type == ACL_LINK) {
 			conn->state = BT_CONFIG;
 			hci_conn_hold(conn);
+			/* Set normal disconnect timeout for ACL : Start*/
+			conn->disc_timeout = HCI_DISCONN_TIMEOUT;
+		    /* Set normal disconnect timeout for ACL : End*/
+			
 		} else
 			conn->state = BT_CONNECTED;
 
@@ -1081,7 +1102,14 @@ static inline void hci_auth_complete_evt(struct hci_dev *hdev, struct sk_buff *s
 				hci_conn_put(conn);
 			}
 		} else
+		/* Set default timeout value after authorization is complete: Start */
+		{
 			hci_auth_cfm(conn, ev->status);
+			hci_conn_hold(conn);
+			conn->disc_timeout = HCI_DISCONN_TIMEOUT;
+			hci_conn_put(conn);
+		}		
+		/* Set default timeout value after authorization is complete: End */
 
 		if (test_bit(HCI_CONN_ENCRYPT_PEND, &conn->pend)) {
 			if (!ev->status) {
@@ -1506,7 +1534,20 @@ static inline void hci_mode_change_evt(struct hci_dev *hdev, struct sk_buff *skb
 
 static inline void hci_pin_code_request_evt(struct hci_dev *hdev, struct sk_buff *skb)
 {
+	/* For PIN request set ACL timeout to pairing timeout: Start */
+	struct hci_ev_pin_code_req * event = (void *)skb->data;
+	struct hci_conn * conn;
 	BT_DBG("%s", hdev->name);
+	hci_dev_lock(hdev);
+	conn = hci_conn_hash_lookup_ba(hdev, ACL_LINK, &event->bdaddr);
+	if (conn && conn->state == BT_CONNECTED) {
+		hci_conn_hold(conn);
+		conn->disc_timeout = HCI_PAIRING_TIMEOUT;
+		hci_conn_put(conn);
+	}
+	hci_dev_unlock(hdev);
+    /* For PIN request set ACL timeout to pairing timeout: End */
+
 }
 
 static inline void hci_link_key_request_evt(struct hci_dev *hdev, struct sk_buff *skb)
@@ -1516,7 +1557,20 @@ static inline void hci_link_key_request_evt(struct hci_dev *hdev, struct sk_buff
 
 static inline void hci_link_key_notify_evt(struct hci_dev *hdev, struct sk_buff *skb)
 {
+	/* Set ACL timeout back to default disconnect timeout: Start */
+	struct hci_ev_link_key_notify * event = (void *) skb->data;
+	struct hci_conn * conn;
 	BT_DBG("%s", hdev->name);
+	hci_dev_lock(hdev);
+	conn = hci_conn_hash_lookup_ba(hdev, ACL_LINK, &event->bdaddr);
+	if (conn) {
+		hci_conn_hold(conn);
+		conn->disc_timeout = HCI_DISCONN_TIMEOUT;
+		hci_conn_put(conn);
+	}
+	hci_dev_unlock(hdev);
+	/* Set ACL timeout back to default disconnect timeout: End */
+
 }
 
 static inline void hci_clock_offset_evt(struct hci_dev *hdev, struct sk_buff *skb)

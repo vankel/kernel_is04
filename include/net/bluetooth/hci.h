@@ -1,3 +1,20 @@
+/*
+ * Certain software is contributed or developed by TOSHIBA CORPORATION.
+ *
+ * Copyright (C) 2010 TOSHIBA CORPORATION All rights reserved.
+ *
+ * This software is licensed under the terms of the GNU General Public
+ * License version 2, as published by FSF, and
+ * may be copied, distributed, and modified under those terms.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * This code is based on hci.h.
+ * The original copyright and notice are described below.
+ */
 /* 
    BlueZ - Bluetooth protocol stack for Linux
    Copyright (C) 2000-2001 Qualcomm Incorporated
@@ -102,6 +119,9 @@ enum {
 /* HCI timeouts */
 #define HCI_CONNECT_TIMEOUT	(40000)	/* 40 seconds */
 #define HCI_DISCONN_TIMEOUT	(2000)	/* 2 seconds */
+/* Added new timeout for pairing: Start */
+#define HCI_PAIRING_TIMEOUT	(60000) /* 60 seconds */
+/* Added new timeout for pairing: End */
 #define HCI_IDLE_TIMEOUT	(6000)	/* 6 seconds */
 #define HCI_INIT_TIMEOUT	(10000)	/* 10 seconds */
 

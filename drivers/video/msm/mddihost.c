@@ -1,3 +1,20 @@
+/*
+ * Certain software is contributed or developed by TOSHIBA CORPORATION.
+ *
+ * Copyright (C) 2010 TOSHIBA CORPORATION All rights reserved.
+ *
+ * This software is licensed under the terms of the GNU General Public
+ * License version 2, as published by FSF, and
+ * may be copied, distributed, and modified under those terms.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * This code is based on mddihost.c.
+ * The original copyright and notice are described below.
+ */
 /* Copyright (c) 2008-2009, Code Aurora Forum. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -378,7 +395,8 @@ boolean mddi_host_register_write_int
 
 void mddi_wait(uint16 time_ms)
 {
-	mdelay(time_ms);
+//	mdelay(time_ms);
+    msleep(time_ms);
 }
 
 void mddi_client_lcd_vsync_detected(boolean detected)

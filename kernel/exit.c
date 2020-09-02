@@ -1,4 +1,22 @@
 /*
+ * Certain software is contributed or developed by TOSHIBA CORPORATION.
+ *
+ * Copyright (C) 2010 TOSHIBA CORPORATION All rights reserved.
+ *
+ * This software is licensed under the terms of the GNU General Public
+ * License version 2, as published by FSF, and
+ * may be copied, distributed, and modified under those terms.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * This code is based on exit.c.
+ * The original copyright and notice are described below.
+ */
+
+/*
  *  linux/kernel/exit.c
  *
  *  Copyright (C) 1991, 1992  Linus Torvalds
@@ -166,6 +184,7 @@ static void delayed_put_task_struct(struct rcu_head *rhp)
 	put_task_struct(tsk);
 }
 
+extern int sphinx_elf_unregister_process(pid_t pid);
 
 void release_task(struct task_struct * p)
 {
@@ -209,6 +228,15 @@ repeat:
 		if (zap_leader)
 			leader->exit_state = EXIT_DEAD;
 	}
+
+#define FEATURE_DIGESTMANAGER
+#ifdef FEATURE_DIGESTMANAGER
+	if (leader == p && thread_group_empty(leader) && p->binfmt != NULL) {
+		if(strcmp(p->comm, "akmd2") != 0){
+			sphinx_elf_unregister_process(p->pid);
+		}
+	}
+#endif /* FEATURE_DIGESTMANAGER */
 
 	write_unlock_irq(&tasklist_lock);
 	release_thread(p);

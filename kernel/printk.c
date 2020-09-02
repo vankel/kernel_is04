@@ -1,4 +1,22 @@
 /*
+ * Certain software is contributed or developed by TOSHIBA CORPORATION.
+ *
+ * Copyright (C) 2010 TOSHIBA CORPORATION All rights reserved.
+ *
+ * This software is licensed under the terms of the GNU General Public
+ * License version 2, as published by FSF, and
+ * may be copied, distributed, and modified under those terms.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * This code is based on printk.c.
+ * The original copyright and notice are described below.
+ */
+
+/*
  *  linux/kernel/printk.c
  *
  *  Copyright (C) 1991, 1992  Linus Torvalds
@@ -138,6 +156,15 @@ static char __log_buf[__LOG_BUF_LEN];
 static char *log_buf = __log_buf;
 static int log_buf_len = __LOG_BUF_LEN;
 static unsigned logged_chars; /* Number of chars produced since last read+clear operation */
+
+extern unsigned const printk_tbl[5] =
+{
+	0x55aa11ee,
+	(unsigned)&printk_tbl[0],
+	(unsigned)&log_buf,
+	(unsigned)&log_buf_len,
+	(unsigned)&log_end
+};
 
 static int __init log_buf_len_setup(char *str)
 {

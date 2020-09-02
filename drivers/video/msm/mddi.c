@@ -1,3 +1,20 @@
+/*
+ * Certain software is contributed or developed by TOSHIBA CORPORATION.
+ *
+ * Copyright (C) 2010 TOSHIBA CORPORATION All rights reserved.
+ *
+ * This software is licensed under the terms of the GNU General Public
+ * License version 2, as published by FSF, and
+ * may be copied, distributed, and modified under those terms.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * This code is based on mddi.c.
+ * The original copyright and notice are described below.
+ */
 /* Copyright (c) 2008-2009, Code Aurora Forum. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -54,6 +71,7 @@
  * POSSIBILITY OF SUCH DAMAGE.
  *
  */
+#define FRAMEBUFFER_32_BPP
 
 #include <linux/module.h>
 #include <linux/kernel.h>
@@ -243,7 +261,11 @@ static int mddi_probe(struct platform_device *pdev)
 	else
 		mfd->fb_imgType = MDP_RGB_565;	/* secondary */
 #else
+#ifdef FRAMEBUFFER_32_BPP
+	mfd->fb_imgType = MDP_XRGB_8888;
+#else
 	mfd->fb_imgType = MDP_RGB_565;
+#endif
 #endif
 
 	clk_rate = mfd->panel_info.clk_max;

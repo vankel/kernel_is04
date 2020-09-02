@@ -70,5 +70,6 @@ void gserial_disconnect(struct gserial *);
 int acm_bind_config(struct usb_configuration *c, u8 port_num);
 int gser_bind_config(struct usb_configuration *c, u8 port_num);
 int obex_bind_config(struct usb_configuration *c, u8 port_num);
+int lismo_bind_config(struct usb_configuration *c, u8 port_num);
 
 #endif /* __U_SERIAL_H */

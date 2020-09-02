@@ -1,4 +1,21 @@
 /*
+ * Certain software is contributed or developed by TOSHIBA CORPORATION.
+ *
+ * Copyright (C) 2010 TOSHIBA CORPORATION All rights reserved.
+ *
+ * This software is licensed under the terms of the GNU General Public
+ * License version 2, as published by FSF, and
+ * may be copied, distributed, and modified under those terms.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * This code is based on cpufreq_ondemand.c.
+ * The original copyright and notice are described below.
+ */
+/*
  *  drivers/cpufreq/cpufreq_ondemand.c
  *
  *  Copyright (C)  2001 Russell King
@@ -594,11 +611,28 @@ static void dbs_input_event(struct input_handle *handle, unsigned int type,
 	schedule_work(&dbs_refresh_work);
 }
 
+static const char *exclude_devices[] = {
+	"light",
+	"accelerometer",
+	"geomagnetic",
+	"geomagnetic_raw",
+	"proximity",
+	"orientation",
+	""
+};
+
 static int dbs_input_connect(struct input_handler *handler,
 		struct input_dev *dev, const struct input_device_id *id)
 {
 	struct input_handle *handle;
 	int error;
+	int i;
+
+	for(i = 0;exclude_devices[i][0] != '\0';i++) {
+		if(strcmp(exclude_devices[i], dev->name) == 0) {
+			return 0;
+		}
+	}
 
 	handle = kzalloc(sizeof(struct input_handle), GFP_KERNEL);
 	if (!handle)

@@ -173,6 +173,15 @@ config MACH_QSD8X50_COMET
 	help
 	  Support for the Qualcomm Comet eval board.
 
+config MACH_QSD8X50_TG03
+	depends on ARCH_QSD8X50
+	depends on MSM_SOC_REV_NONE
+	depends on MSM_STACKED_MEMORY
+	default n
+	bool "QSD8X50 TG03"
+	help
+	  Support for the TG03 device.
+
 config MACH_QSD8X50A_SURF
 	depends on ARCH_QSD8X50
 	depends on MSM_SOC_REV_A
@@ -463,7 +472,7 @@ config HTC_PWRSINK
 
 config QSD_SVS
 	bool "QSD Static Voltage Scaling"
-	depends on (MACH_QSD8X50_SURF || MACH_QSD8X50_FFA || MACH_QSD8X50_COMET || MACH_QSD8X50A_SURF || MACH_QSD8X50A_FFA)
+	depends on (MACH_QSD8X50_SURF || MACH_QSD8X50_FFA || MACH_QSD8X50_COMET || MACH_QSD8X50_TG03)
 	default y
 	select TPS65023
 	help
@@ -471,7 +480,7 @@ config QSD_SVS
 
 config QSD_PMIC_DEFAULT_DCDC1
 	int "PMIC default output voltage"
-	depends on (MACH_QSD8X50_SURF || MACH_QSD8X50_FFA || MACH_QSD8X50_COMET || MACH_QSD8X50A_SURF || MACH_QSD8X50A_FFA)
+	depends on (MACH_QSD8X50_SURF || MACH_QSD8X50_FFA || MACH_QSD8X50_COMET || MACH_QSD8X50_TG03)
 	default 1250
 	help
 	  This is the PMIC voltage at Linux kernel boot.
@@ -826,6 +835,13 @@ config AUDIO_ENHANCED_AAC_PLUS
 
 config SURF_FFA_GPIO_KEYPAD
 	bool "MSM SURF/FFA GPIO keypad"
+	depends on INPUT_GPIO = "y"
+	default y
+	help
+	  Select if the GPIO keypad is attached.
+
+config GPIO_KEYPAD
+	bool "GPIO keypad"
 	depends on INPUT_GPIO = "y"
 	default y
 	help

@@ -1,3 +1,20 @@
+/*
+ * Certain software is contributed or developed by TOSHIBA CORPORATION.
+ *
+ * Copyright (C) 2010 TOSHIBA CORPORATION All rights reserved.
+ *
+ * This software is licensed under the terms of the GNU General Public
+ * License version 2, as published by FSF, and
+ * may be copied, distributed, and modified under those terms.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * This code is based on msm_fb.c.
+ * The original copyright and notice are described below.
+ */
 /* drivers/video/msm/src/drv/fb/msm_fb.c
  *
  * Core MSM framebuffer driver.
@@ -14,6 +31,9 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  */
+
+
+#define FRAMEBUFFER_32_BPP
 
 #include <linux/module.h>
 #include <linux/moduleparam.h>
@@ -523,7 +543,7 @@ static int msm_fb_blank_sub(int blank_mode, struct fb_info *info,
 	switch (blank_mode) {
 	case FB_BLANK_UNBLANK:
 		if (!mfd->panel_power_on) {
-			mdelay(100);
+//			mdelay(100);
 			ret = pdata->on(mfd->pdev);
 			if (ret == 0) {
 				mfd->panel_power_on = TRUE;
@@ -703,13 +723,19 @@ static int msm_fb_mmap(struct fb_info *info, struct vm_area_struct * vma)
 	return 0;
 }
 
+int null_fb_cursor(struct fb_info *info, struct fb_cursor *cursor)
+{
+	/* This is null cursor. */
+	return 0;
+}
+
 static struct fb_ops msm_fb_ops = {
 	.owner = THIS_MODULE,
 	.fb_open = msm_fb_open,
 	.fb_release = msm_fb_release,
 	.fb_read = NULL,
 	.fb_write = NULL,
-	.fb_cursor = NULL,
+	.fb_cursor = null_fb_cursor,	/* NULL, -> null_fb_cursor, */
 	.fb_check_var = msm_fb_check_var,	/* vinfo check */
 	.fb_set_par = msm_fb_set_par,	/* set the video mode according to info->var */
 	.fb_setcolreg = NULL,	/* set color register */
@@ -859,6 +885,27 @@ static int msm_fb_register(struct msm_fb_data_type *mfd)
 		var->transp.length = 0;
 		bpp = 2;
 		break;
+
+#ifdef FRAMEBUFFER_32_BPP
+	case MDP_XRGB_8888:
+		fix->type = FB_TYPE_PACKED_PIXELS;
+		fix->xpanstep = 1;
+		fix->ypanstep = 1;
+		var->vmode = FB_VMODE_NONINTERLACED;
+		var->blue.offset = 0;
+		var->green.offset = 8;
+		var->red.offset = 16;
+		var->blue.length = 8;
+		var->green.length = 8;
+		var->red.length = 8;
+		var->blue.msb_right = 0;
+		var->green.msb_right = 0;
+		var->red.msb_right = 0;
+		var->transp.offset = 24;
+		var->transp.length = 8;
+		bpp = 4;
+		break;
+#endif
 
 	default:
 		MSM_FB_ERR("msm_fb_init: fb %d unkown image type!\n",
@@ -1276,6 +1323,21 @@ static int msm_fb_check_var(struct fb_var_screeninfo *var, struct fb_info *info)
 		break;
 
 	case 32:
+#ifdef FRAMEBUFFER_32_BPP
+		if ((var->blue.offset != 0) ||
+			(var->green.offset != 8) ||
+			(var->red.offset != 16) ||
+			(var->blue.length != 8) ||
+			(var->green.length != 8) ||
+			(var->red.length != 8) ||
+			(var->blue.msb_right != 0) ||
+			(var->green.msb_right != 0) ||
+			(var->red.msb_right != 0) ||
+			(var->transp.offset != 24) ||
+			(var->transp.length != 8))
+				return -EINVAL;
+		break;
+#else
 		if ((var->blue.offset != 8) ||
 			(var->green.offset != 16) ||
 			(var->red.offset != 24) ||
@@ -1291,6 +1353,7 @@ static int msm_fb_check_var(struct fb_var_screeninfo *var, struct fb_info *info)
 				(var->transp.length == 8))))
 				return -EINVAL;
 		break;
+#endif
 
 	default:
 		return -EINVAL;
@@ -1346,8 +1409,16 @@ static int msm_fb_set_par(struct fb_info *info)
 		break;
 
 	case 32:
+#ifdef FRAMEBUFFER_32_BPP
+		if ((var->transp.offset == 0) && (var->transp.length == 0))
+			mfd->fb_imgType = MDP_RGBA_8888;
+		else if ((var->transp.offset == 24) && (var->transp.length == 8))
+			mfd->fb_imgType = MDP_XRGB_8888;
+		break;
+#else
 		mfd->fb_imgType = MDP_RGBA_8888;
 		break;
+#endif
 
 	default:
 		return -EINVAL;

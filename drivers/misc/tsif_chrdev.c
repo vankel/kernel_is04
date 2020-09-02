@@ -1,3 +1,20 @@
+/*
+ * Certain software is contributed or developed by TOSHIBA CORPORATION.
+ *
+ * Copyright (C) 2010 TOSHIBA CORPORATION All rights reserved.
+ *
+ * This software is licensed under the terms of the GNU General Public
+ * License version 2, as published by FSF, and
+ * may be copied, distributed, and modified under those terms.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * This code is based on tsif_chrdev.c.
+ * The original copyright and notice are described below.
+ */
 /**
  * TSIF driver client
  *
@@ -72,6 +89,22 @@
 
 #include <linux/tsif_api.h>
 
+#include <linux/proc_fs.h>
+
+
+/* tsif trace */
+static int debug = 0;
+#define tsif_info(dev, format, arg...) do { if (debug) dev_info(dev , format , ## arg); } while (0)
+
+/* TS TBL */
+typedef struct{
+	unsigned char  S;
+	unsigned char  W0;
+	unsigned char  W1;
+	unsigned char  H;
+	unsigned char  tbl[256];
+}S_TsConvTbl;
+
 struct tsif_chrdev {
 	struct cdev cdev;
 	struct device *dev;
@@ -83,6 +116,9 @@ struct tsif_chrdev {
 	unsigned ri, wi;
 	enum tsif_state state;
 	unsigned rptr;
+	/* TS TBL */
+	unsigned int ts_dat;
+	S_TsConvTbl ts_tbl;
 };
 
 static ssize_t tsif_open(struct inode *inode, struct file *file)
@@ -114,9 +150,13 @@ static ssize_t tsif_read(struct file *filp, char __user *buf, size_t count,
 {
 	int avail = 0;
 	int wi;
+	int i,j;
+	int off,index;
+	unsigned char *user_buf;
 	struct tsif_chrdev *the_dev = filp->private_data;
 	tsif_get_state(the_dev->cookie, &the_dev->ri, &the_dev->wi,
 		       &the_dev->state);
+
 	/* consistency check */
 	if (the_dev->ri != (the_dev->rptr / TSIF_PKT_SIZE)) {
 		dev_err(the_dev->dev,
@@ -150,6 +190,15 @@ static ssize_t tsif_read(struct file *filp, char __user *buf, size_t count,
 	wi = (the_dev->wi > the_dev->ri) ?
 		the_dev->wi : the_dev->buf_size_packets;
 	avail = min(wi * TSIF_PKT_SIZE - the_dev->rptr, count);
+
+	user_buf = the_dev->data_buffer + the_dev->rptr;
+	for (i = 0; i < the_dev->ts_tbl.H; i++){
+		off = the_dev->ts_tbl.S + i * the_dev->ts_tbl.W0;
+	    for (j = 0; j < the_dev->ts_tbl.W1; j = the_dev->ts_dat + j){
+			index =  user_buf[ off + j];
+			user_buf[off + j] = the_dev->ts_tbl.tbl[ index ];
+	    }
+	}
 	if (copy_to_user(buf, the_dev->data_buffer + the_dev->rptr, avail))
 		return -EFAULT;
 	the_dev->rptr = (the_dev->rptr + avail) %
@@ -167,11 +216,37 @@ static void tsif_notify(void *data)
 		       &the_dev->state);
 	wake_up_interruptible(&the_dev->wq_read);
 }
+/*---------------------------------------------------------------------------
+    tsif_ioctl
+---------------------------------------------------------------------------*/
+/* IOCTL CMD */
+#define	TSIF_IOCTL_CMD_01 1
+/* struct CMD01 */
+typedef struct {
+	unsigned int ts_dat;
+	S_TsConvTbl  ts_tbl;
+} tsif_ioctl_cmd_01;
+static long tsif_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
+{
+	tsif_ioctl_cmd_01 param1;
+	struct tsif_chrdev *the_dev = filp->private_data;
+
+	if(cmd == TSIF_IOCTL_CMD_01) {
+		if (copy_from_user(&param1,(tsif_ioctl_cmd_01 __user *)arg,sizeof(tsif_ioctl_cmd_01))) {
+			printk("tsif_ioctl:%s: copy_from_user failed\n", __func__ );
+			return (-EFAULT);
+		}
+		the_dev->ts_dat = param1.ts_dat;
+		memcpy(&the_dev->ts_tbl ,&param1.ts_tbl ,sizeof(S_TsConvTbl));
+	}
+	return 0;
+}
 
 static const struct file_operations tsif_fops = {
 	.owner   = THIS_MODULE,
 	.read    = tsif_read,
 	.open    = tsif_open,
+	.unlocked_ioctl = tsif_ioctl,
 	.release = tsif_release,
 };
 
@@ -202,7 +277,7 @@ static int tsif_init_one(struct tsif_chrdev *the_dev, int index)
 	}
 	/* now data buffer is not allocated yet */
 	tsif_get_info(the_dev->cookie, &the_dev->data_buffer, NULL);
-	dev_info(the_dev->dev,
+	tsif_info(the_dev->dev,
 		 "Device %d.%d attached to TSIF, buffer size %d\n",
 		 MAJOR(the_dev->cdev.dev), MINOR(the_dev->cdev.dev),
 		 the_dev->buf_size_packets);
@@ -216,7 +291,7 @@ err_create:
 
 static void tsif_exit_one(struct tsif_chrdev *the_dev)
 {
-	dev_info(the_dev->dev, "%s\n", __func__);
+	tsif_info(the_dev->dev, "%s\n", __func__);
 	tsif_detach(the_dev->cookie);
 	device_destroy(tsif_class, the_dev->cdev.dev);
 	cdev_del(&the_dev->cdev);

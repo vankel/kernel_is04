@@ -1,3 +1,23 @@
+/*
+
+* Certain software is contributed or developed by TOSHIBA CORPORATION.
+*
+* Copyright (C) 2010 TOSHIBA CORPORATION All rights reserved.
+*
+* This software is licensed under the terms of the GNU General Public
+* License version 2, as published by FSF, and
+* may be copied, distributed, and modified under those terms.
+*
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+*
+* This code is based on msm72k_otg.c.
+* The original copyright and notice are described below.
+*/
+
+
 /* Copyright (c) 2009-2010, Code Aurora Forum. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -73,15 +93,45 @@
 #include <linux/uaccess.h>
 
 #define MSM_USB_BASE	(dev->regs)
+#if 1
+#define is_host_a()	((OTGSC_ID & readl(USB_OTGSC)) ? 0 : 1)         /* DEBUG */
+#define is_b_sess_vld_a()	((OTGSC_BSV & readl(USB_OTGSC)) ? 1 : 0) /* DEBUG */
+#else
 #define is_host()	((OTGSC_ID & readl(USB_OTGSC)) ? 0 : 1)
 #define is_b_sess_vld()	((OTGSC_BSV & readl(USB_OTGSC)) ? 1 : 0)
+#endif
 #define DRIVER_NAME	"msm_otg"
 
 static void otg_reset(struct msm_otg *dev);
 static void msm_otg_set_vbus_state(int online);
+void msm_usb_phy_reg_init(void);
+void msm_otg_enable_irq(void);
+#if 1
+void msm_otg_disable_irq(void);
+#endif
+
+extern enum chg_type usb_chg_type;
+
+#if 1
+static unsigned char no_change_int_flag = 0;
+#endif
 
 struct msm_otg *the_msm_otg;
 
+#if 1
+static unsigned char ReceivedCableDetectEvent = 0;/* +101025_9999 */
+
+static unsigned char is_host()
+{
+    struct msm_otg *dev = the_msm_otg;
+    return (ReceivedCableDetectEvent ? is_host_a() : 0 );
+}
+static unsigned char is_b_sess_vld()
+{
+    struct msm_otg *dev = the_msm_otg;
+    return (ReceivedCableDetectEvent ? is_b_sess_vld_a() : 0);
+}
+#endif
 static unsigned ulpi_read(struct msm_otg *dev, unsigned reg)
 {
 	unsigned timeout = 100000;
@@ -174,7 +224,11 @@ static void msm_otg_start_peripheral(struct otg_transceiver *xceiv, int on)
 	if (on)
 		usb_gadget_vbus_connect(xceiv->gadget);
 	else
+    {
 		usb_gadget_vbus_disconnect(xceiv->gadget);
+        ReceivedCableDetectEvent = 0;
+		printk("USB_DEBUG:ReceivedCableDetectEvent=%d(line%d)\n",ReceivedCableDetectEvent,__LINE__); 
+    }
 }
 
 static void msm_otg_start_host(struct otg_transceiver *xceiv, int on)
@@ -198,14 +252,17 @@ static int msm_otg_suspend(struct msm_otg *dev)
 	if (dev->in_lpm)
 		goto out;
 
-	/* Don't reset if mini-A cable is connected */
+        int is_host_connected = 0;
+        if (is_host_a())
+            is_host_connected = 1;
 	if (!is_host())
 		otg_reset(dev);
 
 	/* In case of fast plug-in and plug-out inside the otg_reset() the
 	 * servicing of BSV is missed (in the window of after phy and link
 	 * reset). Handle it if any missing bsv is detected */
-	if (is_b_sess_vld() && !is_host()) {
+	if (is_b_sess_vld() && !is_host()
+   && usb_chg_type != USB_CHG_TYPE__WALLCHARGER) {
 		otgsc = readl(USB_OTGSC);
 		writel(otgsc, USB_OTGSC);
 		pr_info("%s:Process mising BSV\n", __func__);
@@ -213,7 +270,7 @@ static int msm_otg_suspend(struct msm_otg *dev)
 		enable_irq(dev->irq);
 		return -1;
 	}
-
+        usb_chg_type = USB_CHG_TYPE__INVALID;
 	ulpi_read(dev, 0x14);/* clear PHY interrupt latch register */
 	/* If there is no pmic notify support turn on phy comparators. */
 	if (!dev->pmic_notif_supp)
@@ -249,7 +306,15 @@ static int msm_otg_suspend(struct msm_otg *dev)
 	pr_info("%s: usb in low power mode\n", __func__);
 
 out:
+#if 0
 	enable_irq(dev->irq);
+#endif
+        if(is_host_connected)
+        {
+            is_host_connected  = 0;
+			enable_irq(dev->irq);
+        }
+	
 
 	/* TBD: as there is no bus suspend implemented as of now
 	 * it should be dummy check
@@ -264,7 +329,6 @@ static int msm_otg_resume(struct msm_otg *dev)
 
 	if (!dev->in_lpm)
 		return 0;
-
 
 	clk_enable(dev->pclk);
 	if (dev->cclk)
@@ -359,8 +423,9 @@ static int msm_otg_set_peripheral(struct otg_transceiver *xceiv,
 
 	if (is_host())
 		msm_otg_start_host(&dev->otg, 1);
-	else if (is_b_sess_vld())
+	else if (is_b_sess_vld()) {
 		msm_otg_start_peripheral(&dev->otg, 1);
+	}
 	else
 		msm_otg_suspend(dev);
 
@@ -382,6 +447,10 @@ static int msm_otg_set_host(struct otg_transceiver *xceiv, struct usb_bus *host)
 		dev->otg.host = 0;
 		dev->start_host = 0;
 		disable_idgnd(dev);
+#if 1
+        ReceivedCableDetectEvent = 0;
+		printk("USB_DEBUG:ReceivedCableDetectEvent=%d(line%d)\n",ReceivedCableDetectEvent,__LINE__);
+#endif
 		return 0;
 	}
 	dev->otg.host = host;
@@ -405,6 +474,142 @@ static void msm_otg_set_vbus_state(int online)
 		msm_otg_set_suspend(&dev->otg, 0);
 }
 
+#define USB_LINK_RESET_TIMEOUT1  (msecs_to_jiffies(10))
+void msm_otg_enable_irq(void)
+{
+#if 0
+	struct msm_otg *dev = the_msm_otg;
+	unsigned long time_msec_irq = 0;
+	time_msec_irq= jiffies_to_msecs(jiffies);
+	if(((time_msec_irq - time_msec_init) < 2000) && is_host())
+	{
+		msleep(10000);
+	}
+	enable_irq(dev->irq);
+#else
+	struct msm_otg *dev = the_msm_otg;
+	unsigned otgsc;
+	unsigned long timeout;
+
+	unsigned long time_msec_irq = 0;
+    if (dev->pmic_notif_supp)
+		dev->pmic_enable_ldo(1);
+	
+	msm_otg_resume(dev);
+
+	if (!is_phy_clk_disabled())
+		goto out;
+
+	timeout = jiffies + usecs_to_jiffies(100);
+	enable_phy_clk();
+	while (is_phy_clk_disabled()) {
+		if (time_after(jiffies, timeout)) {
+			pr_err("%s: Unable to wakeup phy\n", __func__);
+			otg_reset(dev);
+			break;
+		}
+		udelay(10);
+	}
+out:
+
+	enable_irq(dev->irq);
+
+    otgsc = readl(USB_OTGSC);
+   	pr_info("ID -> (%s)\n", (otgsc & OTGSC_ID) ? "B" : "A");
+    if( !(otgsc & OTGSC_ID) )
+    {
+    	msm_otg_start_host(&dev->otg, is_host());
+    } else if (otgsc & OTGSC_BSV) {
+    	pr_info("VBUS - (%s)\n", otgsc & OTGSC_BSV ? "ON" : "OFF");
+    	if (!is_host())
+    		msm_otg_start_peripheral(&dev->otg, is_b_sess_vld());
+    }
+#if 1
+    else
+    {
+        no_change_int_flag = 1;
+    }
+#endif
+    writel(otgsc, USB_OTGSC);
+#endif
+}
+
+#if 1 
+void msm_otg_disable_irq(void)
+{
+    struct msm_otg *dev = the_msm_otg;
+    
+    if(no_change_int_flag != 0)
+    {
+        no_change_int_flag = 0;
+        msm_otg_set_suspend(&dev->otg, 1);
+		hsusb_cable_det_notifi_disconnect();
+    }
+}
+#endif
+
+void msm_usb_phy_reg_init(void)
+{
+	unsigned long timeout;
+        unsigned temp;
+	struct msm_otg *dev = the_msm_otg;
+
+#if 1
+	ReceivedCableDetectEvent = 1;
+	printk("USB_DEBUG:ReceivedCableDetectEvent=%d(line%d)\n",ReceivedCableDetectEvent,__LINE__); 
+
+	clk_enable(dev->pclk);
+	if (dev->cclk)
+	{
+		printk("USB_DEBUG:enable core clock!\n");
+		clk_enable(dev->cclk);
+	}
+#endif
+
+        clk_enable(dev->clk);
+
+#if 1
+	if (dev->phy_reset)
+		dev->phy_reset(dev->regs);
+	/*disable all phy interrupts*/
+	ulpi_write(dev, 0xFF, 0x0F);
+	ulpi_write(dev, 0xFF, 0x12);
+	msleep(100);
+#endif
+
+        writel(USBCMD_RESET, USB_USBCMD);
+        timeout = jiffies + USB_LINK_RESET_TIMEOUT1;
+        do {
+                if (time_after(jiffies, timeout)) {
+                        pr_err("msm_otg: usb link reset timeout\n");
+                        break;
+                }
+                msleep(1);
+        } while (readl(USB_USBCMD) & USBCMD_RESET);
+
+        /* select ULPI phy */
+       	writel(0x80000000, USB_PORTSC);
+
+        temp = ulpi_read(dev, ULPI_CONFIG_REG);
+        temp |= ULPI_AMPLITUDE_MAX;
+        ulpi_write(dev, temp, ULPI_CONFIG_REG);
+
+        writel(0x0, USB_AHB_BURST);
+        writel(0x00, USB_AHB_MODE);
+	  clk_disable(dev->clk);
+
+	if (dev->otg.gadget)
+                enable_sess_valid(dev);
+        if (dev->otg.host)
+                enable_idgnd(dev);
+    
+    clk_disable(dev->pclk);
+	if (dev->cclk)
+	{
+		printk("USB_DEBUG:disable core clock!\n");
+		clk_disable(dev->cclk);
+	}
+}
 /* pmic irq handlers are called from thread context and
  * are allowed to sleep
  */
@@ -426,6 +631,15 @@ static irqreturn_t msm_otg_irq(int irq, void *data)
 {
 	struct msm_otg *dev = data;
 	u32 otgsc = 0;
+
+#if 1
+	if ( !ReceivedCableDetectEvent ){
+		pr_info("%s: request_irq for otg"
+					"not received cable_detect_event!!!!\n", __func__);
+		disable_irq(dev->irq);
+		return IRQ_HANDLED;
+	}
+#endif
 
 	if (dev->in_lpm) {
 		msm_otg_resume(dev);

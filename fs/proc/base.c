@@ -1,4 +1,23 @@
 /*
+
+* Certain software is contributed or developed by TOSHIBA CORPORATION.
+*
+* Copyright (C) 2010 TOSHIBA CORPORATION All rights reserved.
+*
+* This software is licensed under the terms of the GNU General Public
+* License version 2, as published by FSF, and
+* may be copied, distributed, and modified under those terms.
+*
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+*
+* This code is based on base.c.
+* The original copyright and notice are described below.
+*/
+
+/*
  *  linux/fs/proc/base.c
  *
  *  Copyright (C) 1991, 1992 Linus Torvalds
@@ -258,8 +277,7 @@ struct mm_struct *mm_for_maps(struct task_struct *task)
 	if (task->mm != mm)
 		goto out;
 	if (task->mm != current->mm &&
-	    __ptrace_may_access(task, PTRACE_MODE_READ) < 0 &&
-	    !capable(CAP_SYS_RESOURCE))
+	    __ptrace_may_access(task, PTRACE_MODE_READ) < 0 && !capable(CAP_SYS_RESOURCE))
 		goto out;
 	task_unlock(task);
 	return mm;

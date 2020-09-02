@@ -1,3 +1,20 @@
+/*
+ * Certain software is contributed or developed by TOSHIBA CORPORATION.
+ *
+ * Copyright (C) 2010 TOSHIBA CORPORATION All rights reserved.
+ *
+ * This software is licensed under the terms of the GNU General Public
+ * License version 2, as published by FSF, and
+ * may be copied, distributed, and modified under those terms.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * This code is based on gpio_event.h.
+ * The original copyright and notice are described below.
+ */
 /* include/linux/gpio_event.h
  *
  * Copyright (C) 2007 Google, Inc.
@@ -119,6 +136,7 @@ struct gpio_event_input_info {
 	const struct gpio_event_direct_entry *keymap;
 	size_t keymap_size;
 };
+extern void gpio_event_input_headsethook_enable(bool en);
 
 /* outputs */
 extern int gpio_event_output_func(struct gpio_event_input_devs *input_devs,

@@ -1,3 +1,20 @@
+/*
+ * Certain software is contributed or developed by TOSHIBA CORPORATION.
+ *
+ * Copyright (C) 2010 TOSHIBA CORPORATION All rights reserved.
+ *
+ * This software is licensed under the terms of the GNU General Public
+ * License version 2, as published by FSF, and
+ * may be copied, distributed, and modified under those terms.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * This code is based on msm_audio.h.
+ * The original copyright and notice are described below.
+ */
 /* include/linux/msm_audio.h
  *
  * Copyright (C) 2008 Google, Inc.
@@ -65,6 +82,11 @@
 					unsigned short)
 #define AUDIO_GET_BITSTREAM_ERROR_INFO _IOR(AUDIO_IOCTL_MAGIC, 42, \
 			       struct msm_audio_bitstream_error_info)
+/* Extensions */
+#define AUDIO_POWER_CTRL          _IOW(AUDIO_IOCTL_MAGIC, 70, unsigned)
+//Additional interface for TX path Volume changes
+#define AUDIO_SET_TX_VOLUME   	  _IOW(AUDIO_IOCTL_MAGIC, 71, unsigned)
+
 /* Qualcomm extensions */
 #define AUDIO_SET_STREAM_CONFIG   _IOW(AUDIO_IOCTL_MAGIC, 80, \
 				struct msm_audio_stream_config)
@@ -325,5 +347,13 @@ struct msm_audio_eq_stream_config {
 	uint32_t	num_bands;
 	struct msm_audio_eq_band	eq_bands[AUDIO_MAX_EQ_BANDS];
 } __attribute__ ((packed));
+
+/* Audio Power Control */
+#define  APC_SPEAKER_ON       0
+#define  APC_SPEAKER_OFF      1
+#define  APC_HEADSETMIC_ON    2
+#define  APC_HEADSETMIC_OFF   3
+#define  APC_HEADSETSWITCH_ON  4
+#define  APC_HEADSETSWITCH_OFF 5
 
 #endif

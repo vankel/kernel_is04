@@ -253,4 +253,44 @@ config BMA150
 	  To compile this driver as a module, choose M here: the
 	  module will be called bma150.
 
+config INPUT_LIGHT
+    tristate "Light Sensor"
+	default n
+	help
+	  Say Y here if you want support for the Light Sensor
+	  device.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called light.
+
+config INPUT_YAS529
+    tristate "Geomagnatic Sensor"
+	default n
+	help
+	  Say Y here if you want support for the YAS529 Geomagnatic Sensor
+	  device.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called yas529.
+
+config INPUT_ADXL345
+    tristate "Motion Sensor"
+	default n
+	help
+	  Say Y here if you want support for the ADXL345 Motion Sensor
+	  device.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called adxl345.
+
+config INPUT_PROXIMITY
+    tristate "Proximity Sensor"
+	default m
+	help
+	  Say Y here if you want support for the "Proximity Sensor
+	  device.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called proximity.
+
 endif

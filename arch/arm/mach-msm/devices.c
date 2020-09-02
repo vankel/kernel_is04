@@ -1,3 +1,21 @@
+/*
+ * Certain software is contributed or developed by TOSHIBA CORPORATION.
+ *
+ * Copyright (C) 2010 TOSHIBA CORPORATION All rights reserved.
+ *
+ * This software is licensed under the terms of the GNU General Public
+ * License version 2, as published by FSF, and
+ * may be copied, distributed, and modified under those terms.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * This code is based on devices.c.
+ * The original copyright and notice are described below.
+ */
+
 /* linux/arch/arm/mach-msm/devices.c
  *
  * Copyright (C) 2008 Google, Inc.
@@ -33,6 +51,10 @@
 #ifdef CONFIG_PMIC8058
 #include <linux/mfd/pmic8058.h>
 #endif
+
+/* Add-s */
+#include "tsb_model.h"
+/* Add-e */
 
 static struct resource resources_uart1[] = {
 	{
@@ -685,7 +707,10 @@ static struct resource resources_sdc4[] = {
 };
 
 struct platform_device msm_device_sdc1 = {
-	.name		= "msm_sdcc",
+/* Mod-s */
+/*	.name		= "msm_sdcc",*/
+	.name		= "tsb_sdcc",
+/* Mod-e */
 	.id		= 1,
 	.num_resources	= ARRAY_SIZE(resources_sdc1),
 	.resource	= resources_sdc1,
@@ -739,6 +764,12 @@ int __init msm_add_sdcc(unsigned int controller, struct mmc_platform_data *plat)
 		return -EINVAL;
 
 	pdev = msm_sdcc_devices[controller-1];
+/* Add-s */
+	if((controller == 1) && (tsb_model_get_model_no() == TSB_MODEL_NO_0))
+	{
+		pdev->name = "msm_sdcc";
+	}
+/* Add-e */
 	pdev->dev.platform_data = plat;
 	return platform_device_register(pdev);
 }
@@ -779,7 +810,7 @@ int __init rmt_storage_add_ramfs(void)
 	struct shared_ramfs_entry *ramfs_entry;
 	int index;
 
-	ramfs_table = smem_alloc(SMEM_SEFS_INFO,
+	ramfs_table = smem_alloc(SMEM_OEM_001,
 			sizeof(struct shared_ramfs_table));
 
 	if (!ramfs_table) {

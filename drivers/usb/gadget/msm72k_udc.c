@@ -1,4 +1,23 @@
 /*
+
+* Certain software is contributed or developed by TOSHIBA CORPORATION.
+*
+* Copyright (C) 2010 TOSHIBA CORPORATION All rights reserved.
+*
+* This software is licensed under the terms of the GNU General Public
+* License version 2, as published by FSF, and
+* may be copied, distributed, and modified under those terms.
+*
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+*
+* This code is based on msm72k_udc.c.
+* The original copyright and notice are described below.
+*/
+
+/*
  * Driver for HighSpeed USB Client Controller in MSM7K
  *
  * Copyright (C) 2008 Google, Inc.
@@ -76,7 +95,7 @@ static const char *const ep_name[] = {
 static int vbus;
 /*To release the wakelock from debugfs*/
 static int release_wlocks;
-
+enum chg_type usb_chg_type = USB_CHG_TYPE__INVALID;
 struct msm_request {
 	struct usb_request req;
 
@@ -218,6 +237,7 @@ static int msm72k_set_halt(struct usb_ep *_ep, int value);
 static void flush_endpoint(struct msm_endpoint *ept);
 static void msm72k_pm_qos_update(int);
 
+extern void gserial_datacable_connected(void);
 
 static ssize_t print_switch_name(struct switch_dev *sdev, char *buf)
 {
@@ -291,8 +311,9 @@ static void usb_chg_detect(struct work_struct *w)
 		spin_unlock_irqrestore(&ui->lock, flags);
 		return;
 	}
-
+	
 	temp = ui->chg_type = usb_get_chg_type(ui);
+        gserial_datacable_connected();
 	spin_unlock_irqrestore(&ui->lock, flags);
 
 	hsusb_chg_connected(temp);
@@ -308,11 +329,27 @@ static void usb_chg_detect(struct work_struct *w)
 	 * driver will reacquire wakelocks for any sub-sequent usb interrupts.
 	 * */
 	if (temp == USB_CHG_TYPE__WALLCHARGER) {
-		msm72k_pm_qos_update(0);
-		wake_unlock(&ui->wlock);
+	printk("USB_gadget: AC Charger detected %s\n",__func__);
+	       usb_chg_type = USB_CHG_TYPE__WALLCHARGER;
+		ui->state = USB_STATE_ONLINE;
+#if 0
+         ui->usb_state = USB_STATE_SUSPENDED;
+         ui->driver->suspend(&ui->gadget);
+#endif
+         ui->flags = USB_FLAG_VBUS_OFFLINE;		
+         schedule_work(&ui->work);
 	}
 }
 
+int usb_charger_detection_state(void);
+int usb_charger_detection_state()
+{
+         if(usb_chg_type == USB_CHG_TYPE__WALLCHARGER) {
+                return 1;
+        } else {
+                return 0;
+        }
+}
 static int usb_ep_get_stall(struct msm_endpoint *ept)
 {
 	unsigned int n;
@@ -834,14 +871,30 @@ static void handle_setup(struct usb_info *ui)
 				goto stall;
 			case USB_DEVICE_REMOTE_WAKEUP:
 				ui->remote_wakeup = 1;
-				goto ack;
+				goto stall;
+			default :
+				if (ctl.wValue != USB_ENDPOINT_HALT) {
+                                        goto stall;
+                                }
 			}
-		} else if ((ctl.bRequest == USB_REQ_CLEAR_FEATURE) &&
-				(ctl.wValue == USB_DEVICE_REMOTE_WAKEUP)) {
-			ui->remote_wakeup = 0;
-			goto ack;
+		} else if ((ctl.bRequest == USB_REQ_CLEAR_FEATURE)) {
+			switch (ctl.wValue) {
+			case USB_DEVICE_REMOTE_WAKEUP:
+				ui->remote_wakeup = 0;
+				goto stall;
+			default :
+				if ((ctl.wValue != USB_ENDPOINT_HALT) || (ctl.wValue != USB_DEVICE_TEST_MODE)) {
+                                        goto stall;
+                                }
+			}
 		}
 	}
+
+	if (ctl.bRequest == USB_REQ_GET_DESCRIPTOR ) {
+                if((ctl.wValue == 0) || ((ctl.wValue >>8 ) > 8)) {
+                        goto stall;
+                }
+        }
 
 	/* delegate if we get here */
 	if (ui->driver) {
@@ -1290,6 +1343,7 @@ static void usb_do_work(struct work_struct *w)
 				msm72k_pm_qos_update(1);
 				pr_info("msm72k_udc: IDLE -> ONLINE\n");
 				usb_reset(ui);
+#if 0
 				ret = request_irq(otg->irq, usb_interrupt,
 							IRQF_SHARED,
 							ui->pdev->name, ui);
@@ -1302,6 +1356,7 @@ static void usb_do_work(struct work_struct *w)
 					msm72k_pm_qos_update(0);
 					break;
 				}
+#endif
 				ui->irq = otg->irq;
 				msm72k_pullup(&ui->gadget, 1);
 
@@ -1343,9 +1398,11 @@ static void usb_do_work(struct work_struct *w)
 				 * we must let modem know about charger
 				 * disconnection
 				 */
-				if (temp != USB_CHG_TYPE__INVALID)
+				
+				if (temp != USB_CHG_TYPE__INVALID) {		
 					hsusb_chg_connected(
 						USB_CHG_TYPE__INVALID);
+				}
 
 				if (ui->irq) {
 					free_irq(ui->irq, ui);
@@ -1359,15 +1416,35 @@ static void usb_do_work(struct work_struct *w)
 					printk(KERN_INFO "usb: notify offline\n");
 					ui->driver->disconnect(&ui->gadget);
 				}
-
+				
 				switch_set_state(&ui->sdev, 0);
 				/* power down phy, clock down usb */
 				otg_set_suspend(ui->xceiv, 1);
-
 				ui->state = USB_STATE_OFFLINE;
+#if 0
 				usb_do_work_check_vbus(ui);
 				msm72k_pm_qos_update(0);
 				wake_unlock(&ui->wlock);
+			
+				if (temp != USB_CHG_TYPE__WALLCHARGER)	
+					hsusb_cable_det_notifi_disconnect();
+#else
+				if (temp != USB_CHG_TYPE__WALLCHARGER)
+				{
+					#define WAKE_LOCK_TIME_OUT 500
+					usb_do_work_check_vbus(ui);
+					msm72k_pm_qos_update(0);
+					wake_lock_timeout(&ui->wlock,WAKE_LOCK_TIME_OUT);
+					hsusb_cable_det_notifi_disconnect();
+				}
+				else
+				{
+					msm72k_pm_qos_update(0);
+					wake_unlock(&ui->wlock);
+					msm_hsusb_set_vbus_state(0);
+					hsusb_cable_usb_vdd_off();
+				}
+#endif
 				break;
 			}
 			if (flags & USB_FLAG_SUSPEND) {
@@ -1375,7 +1452,6 @@ static void usb_do_work(struct work_struct *w)
 
 				if (maxpower < 0)
 					break;
-
 				hsusb_chg_vbus_draw(0);
 				/* To support TCXO during bus suspend
 				 * This might be dummy check since bus suspend
@@ -1868,6 +1944,14 @@ static int msm72k_udc_vbus_session(struct usb_gadget *_gadget, int is_active)
 	return 0;
 }
 
+#if 1
+static int msm72k_udc_is_host(void)
+{
+	struct usb_info *ui = the_usb_info;
+	return ((OTGSC_ID & readl(USB_OTGSC)) ? 0 : 1);
+}
+#endif
+
 /* SW workarounds
 Issue #1	- USB Spoof Disconnect Failure
 Symptom	- Writing 0 to run/stop bit of USBCMD doesn't cause disconnect
@@ -1965,7 +2049,7 @@ static const struct usb_gadget_ops msm72k_ops = {
 	.vbus_session	= msm72k_udc_vbus_session,
 	.vbus_draw	= msm72k_udc_vbus_draw,
 	.pullup		= msm72k_pullup,
-	.wakeup		= msm72k_wakeup,
+	.wakeup	= NULL,
 	.set_selfpowered = msm72k_set_selfpowered,
 };
 
@@ -2069,7 +2153,6 @@ static int msm72k_probe(struct platform_device *pdev)
 		ui->phy_reset = pdata->phy_reset;
 		ui->phy_init_seq = pdata->phy_init_seq;
 	}
-
 	ui->chg_type = USB_CHG_TYPE__INVALID;
 	hsusb_chg_init(1);
 
@@ -2124,6 +2207,7 @@ static int msm72k_probe(struct platform_device *pdev)
 		wake_lock_destroy(&ui->wlock);
 		return usb_free(ui, retval);
 	}
+		hsusb_cable_det_notifi_initialize_complete(0x0000);
 
 	return 0;
 }
@@ -2217,7 +2301,14 @@ int usb_gadget_unregister_driver(struct usb_gadget_driver *driver)
 	if (!driver || driver != dev->driver || !driver->unbind)
 		return -EINVAL;
 
+#if 1
+	if( !msm72k_udc_is_host())
+	{
+		msm72k_pullup(&dev->gadget, 0);
+	}
+#else
 	msm72k_pullup(&dev->gadget, 0);
+#endif
 	dev->state = USB_STATE_IDLE;
 	dev->online = 0;
 	switch_set_state(&dev->sdev, 0);

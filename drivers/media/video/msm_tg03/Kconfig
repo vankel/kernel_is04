@@ -1,0 +1,7 @@
+comment "Camera Sensor Selection"
+config TSB143F
+	bool "Sensor tsb143f (YUV 12M)"
+	depends on TSB_CAMERA_TG03
+	default y
+	---help---
+	  12M YUV Sensor with AutoFocus

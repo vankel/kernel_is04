@@ -119,6 +119,14 @@ config LEDS_GPIO
 	  outputs. To be useful the particular board must have LEDs
 	  and they must be connected to the GPIO lines.
 
+config LEDS_I2C
+	tristate "LED Support for I2C connected LEDs"
+	depends on LEDS_CLASS && GENERIC_GPIO
+	help
+	  This option enables support for the LEDs connected to I2C
+	  Module. To be useful the particular board must have LEDs
+	  and they must be connected to the I2C lines.
+
 config LEDS_CPLD
 	tristate "LED Support for CPLD connected LEDs"
 	default y

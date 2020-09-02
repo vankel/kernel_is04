@@ -1,4 +1,21 @@
 /*
+ * Certain software is contributed or developed by TOSHIBA CORPORATION.
+ *
+ * Copyright (C) 2010 TOSHIBA CORPORATION All rights reserved.
+ *
+ * This software is licensed under the terms of the GNU General Public
+ * License version 2, as published by FSF, and
+ * may be copied, distributed, and modified under those terms.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * This code is based on block.c.
+ * The original copyright and notice are described below.
+ */
+/*
  * Block driver for media (i.e., flash cards)
  *
  * Copyright 2002 Hewlett-Packard Company
@@ -681,7 +698,11 @@ static int mmc_blk_resume(struct mmc_card *card)
 		 * due to auto-suspend functionality, then resume it
 		 * now.
 		 */
-		mmc_auto_suspend(card->host, 0);
+		if (mmc_card_blockaddr(card)){
+		}else{
+			mmc_auto_suspend(card->host, 0);
+		}
+		
 #endif
 #ifndef CONFIG_MMC_BLOCK_DEFERRED_RESUME
 		mmc_blk_set_blksize(md, card);

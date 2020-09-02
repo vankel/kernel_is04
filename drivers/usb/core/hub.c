@@ -1,4 +1,23 @@
 /*
+
+* Certain software is contributed or developed by TOSHIBA CORPORATION.
+*
+* Copyright (C) 2010 TOSHIBA CORPORATION All rights reserved.
+*
+* This software is licensed under the terms of the GNU General Public
+* License version 2, as published by FSF, and
+* may be copied, distributed, and modified under those terms.
+*
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+*
+* This code is based on hub.c.
+* The original copyright and notice are described below.
+*/
+
+/*
  * USB hub driver.
  *
  * (C) Copyright 1999 Linus Torvalds
@@ -1428,6 +1447,7 @@ void usb_disconnect(struct usb_device **pdev)
 		if (udev->children[i])
 			usb_disconnect(&udev->children[i]);
 	}
+        //hsusb_cable_det_notifi_disconnect();
 
 	/* deallocate hcd/hardware state ... nuking all pending urbs and
 	 * cleaning up all state associated with the current configuration

@@ -1,3 +1,22 @@
+/*
+
+* Certain software is contributed or developed by TOSHIBA CORPORATION.
+*
+* Copyright (C) 2010 TOSHIBA CORPORATION All rights reserved.
+*
+* This software is licensed under the terms of the GNU General Public
+* License version 2, as published by FSF, and
+* may be copied, distributed, and modified under those terms.
+*
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+*
+* This code is based on msm_vfe8x_proc.c.
+* The original copyright and notice are described below.
+*/
+
 /* Copyright (c) 2009-2010, Code Aurora Forum. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
@@ -15,6 +34,7 @@
  * 02110-1301, USA.
  *
  */
+
 
 #include <linux/slab.h>
 #include <linux/interrupt.h>
@@ -1880,6 +1900,8 @@ int vfe_cmd_init(struct msm_vfe_callback *presp,
 		rc = -EIO;
 		goto cmd_init_failed3;
 	}
+
+	spin_lock_init(&ctrl->irqs_lock);
 
 	ctrl->syncdata = sdata;
 	return 0;

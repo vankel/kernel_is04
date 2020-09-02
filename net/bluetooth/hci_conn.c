@@ -1,4 +1,21 @@
 /*
+ * Certain software is contributed or developed by TOSHIBA CORPORATION.
+ *
+ * Copyright (C) 2010 TOSHIBA CORPORATION All rights reserved.
+ *
+ * This software is licensed under the terms of the GNU General Public
+ * License version 2, as published by FSF, and
+ * may be copied, distributed, and modified under those terms.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * This code is based on hci_conn.c.
+ * The original copyright and notice are described below.
+ */
+/*
    BlueZ - Bluetooth protocol stack for Linux
    Copyright (c) 2000-2001, 2010, Code Aurora Forum. All rights reserved.
 
@@ -234,6 +251,9 @@ struct hci_conn *hci_conn_add(struct hci_dev *hdev, int type, bdaddr_t *dst)
 	conn->auth_type = HCI_AT_GENERAL_BONDING;
 
 	conn->power_save = 1;
+	/* Set default disconnect timeout: Start */
+	conn->disc_timeout = HCI_DISCONN_TIMEOUT;
+	/* Set default disconnect timeout: End */
 
 	switch (type) {
 	case ACL_LINK:
@@ -513,7 +533,7 @@ void hci_conn_enter_active_mode(struct hci_conn *conn)
 	if (test_bit(HCI_RAW, &hdev->flags))
 		return;
 
-	if (conn->mode != HCI_CM_SNIFF /* || !conn->power_save */)
+	if (conn->mode != HCI_CM_SNIFF || !conn->power_save)
 		goto timer;
 
 	if (!test_and_set_bit(HCI_CONN_MODE_CHANGE_PEND, &conn->pend)) {

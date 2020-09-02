@@ -1,3 +1,20 @@
+/*
+ * Certain software is contributed or developed by TOSHIBA CORPORATION.
+ *
+ * Copyright (C) 2010 TOSHIBA CORPORATION All rights reserved.
+ *
+ * This software is licensed under the terms of the GNU General Public
+ * License version 2, as published by FSF, and
+ * may be copied, distributed, and modified under those terms.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * This code is based on spi_qsd.c.
+ * The original copyright and notice are described below.
+ */
 /* Copyright (c) 2008-2009, Code Aurora Forum. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -58,6 +75,7 @@
  * SPI driver for Qualcomm QSD platforms
  *
  */
+
 #include <linux/version.h>
 #include <linux/kernel.h>
 #include <linux/init.h>
@@ -722,7 +740,9 @@ static void msm_spi_process_transfer(struct msm_spi *dd)
 		max_speed = dd->cur_transfer->speed_hz;
 	else
 		max_speed = dd->cur_msg->spi->max_speed_hz;
-	if (!dd->clock_speed || max_speed < dd->clock_speed)
+
+	/* set the spi clock when using different clock */
+	if (!max_speed || dd->clock_speed != max_speed)
 		msm_spi_clock_set(dd, max_speed);
 
 	read_count = DIV_ROUND_UP(dd->cur_transfer->len, dd->bytes_per_word);

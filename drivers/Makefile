@@ -5,6 +5,10 @@
 # Rewritten to use lists instead of if-statements.
 #
 
+ifdef CONFIG_MACH_QSD8X50_TG03
+	KBUILD_CFLAGS += -Idrivers/toshiba/include
+endif
+
 obj-y				+= gpio/
 obj-$(CONFIG_PCI)		+= pci/
 obj-$(CONFIG_PARISC)		+= parisc/
@@ -109,3 +113,5 @@ obj-$(CONFIG_SSB)		+= ssb/
 obj-$(CONFIG_VIRTIO)		+= virtio/
 obj-$(CONFIG_STAGING)		+= staging/
 obj-y				+= platform/
+obj-$(CONFIG_MACH_QSD8X50_TG03)	+= toshiba/
+obj-y				+= presenter/

@@ -1,3 +1,7 @@
+ifdef CONFIG_MACH_QSD8X50_TG03
+	KBUILD_CFLAGS += -Idrivers/toshiba/include
+endif
+
 obj-y += io.o dma.o memory.o
 obj-y += devices.o
 obj-y += proc_comm.o
@@ -88,6 +92,7 @@ obj-$(CONFIG_MACH_QSD8X50_FFA) += board-qsd8x50.o
 obj-$(CONFIG_MACH_QSD8X50_COMET) += board-comet.o
 obj-$(CONFIG_MACH_QSD8X50A_SURF) += board-qsd8x50.o
 obj-$(CONFIG_MACH_QSD8X50A_FFA) += board-qsd8x50.o
+obj-$(CONFIG_MACH_QSD8X50_TG03) += board-tg03.o msm_vibrator.o
 obj-$(CONFIG_TROUT_H2W) += board-trout-h2w.o
 obj-$(CONFIG_TROUT_BATTCHG) += htc_battery.o
 obj-$(CONFIG_TROUT_PWRSINK) += htc_pwrsink.o

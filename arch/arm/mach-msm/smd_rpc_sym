@@ -141,3 +141,5 @@
 0x3000009F  touch_screen_adc
 0x300000A0  smd_bridge_apps
 0x300000A1  smd_bridge_modem
+0x300000A2  oem_rapi_common_pipe
+0x300000A3  oem_rapi_fclk

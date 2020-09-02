@@ -1,3 +1,22 @@
+/*
+
+* Certain software is contributed or developed by TOSHIBA CORPORATION.
+*
+* Copyright (C) 2010 TOSHIBA CORPORATION All rights reserved.
+*
+* This software is licensed under the terms of the GNU General Public
+* License version 2, as published by FSF, and
+* may be copied, distributed, and modified under those terms.
+*
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+*
+* This code is based on pm2.c
+* The original copyright and notice are described below.
+*/
+
 /* arch/arm/mach-msm/pm2.c
  *
  * MSM Power Management Routines
@@ -1650,6 +1669,9 @@ static uint32_t restart_reason = 0x776655AA;
 
 static void msm_pm_power_off(void)
 {
+        
+        smsm_change_state(SMSM_APPS_STATE,DEM_SLAVE_SMSM_RUN,SMSM_SYSTEM_POWER_DOWN);
+
 	msm_rpcrouter_close();
 	msm_proc_comm(PCOM_POWER_DOWN, 0, 0);
 	for (;;)
@@ -1658,6 +1680,7 @@ static void msm_pm_power_off(void)
 
 static void msm_pm_restart(char str)
 {
+        smsm_change_state(SMSM_APPS_STATE,DEM_SLAVE_SMSM_RUN,SMSM_SYSTEM_REBOOT);
 	msm_rpcrouter_close();
 	msm_proc_comm(PCOM_RESET_CHIP, &restart_reason, 0);
 

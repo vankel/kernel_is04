@@ -1,13 +1,42 @@
 /*
- * LED Class Core
- *
- * Copyright (C) 2005 John Lenz <lenz@cs.wisc.edu>
- * Copyright (C) 2005-2007 Richard Purdie <rpurdie@openedhand.com>
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- */
+
+* Certain software is contributed or developed by TOSHIBA CORPORATION.
+*
+* Copyright (C) 2010 TOSHIBA CORPORATION All rights reserved.
+*
+* This software is licensed under the terms of the GNU General Public
+* License version 2, as published by FSF, and
+* may be copied, distributed, and modified under those terms.
+*
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+*
+* This code is based on led-class.c
+* The original copyright and notice are described below.
+*/
+
+/*
+  LED Class Core Driver
+
+  one line to give the program's name and an idea of what it does.
+  Copyright (C) 2010 TOSHIBA CORPORATION Mobile Communication Company.
+
+  This program is free software; you can redistribute it and/or
+  modify it under the terms of the GNU General Public License
+  as published by the Free Software Foundation; either version 2
+  of the License, or (at your option) any later version.
+
+  This program is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
+
+  You should have received a copy of the GNU General Public License
+  along with this program; if not, write to the Free Software
+  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA
+*/
 
 #include <linux/module.h>
 #include <linux/kernel.h>
@@ -63,10 +92,11 @@ static ssize_t led_brightness_store(struct device *dev,
 
 	return ret;
 }
-
-static DEVICE_ATTR(brightness, 0644, led_brightness_show, led_brightness_store);
+static DEVICE_ATTR(brightness, 0777, led_brightness_show, led_brightness_store);
+static DEVICE_ATTR(led_notify, 0777, led_notify_show, led_notify_store);
+static DEVICE_ATTR(led_color, 0777, led_color_show, led_color_store);
 #ifdef CONFIG_LEDS_TRIGGERS
-static DEVICE_ATTR(trigger, 0644, led_trigger_show, led_trigger_store);
+static DEVICE_ATTR(trigger, 0777, led_trigger_show, led_trigger_store);
 #endif
 
 /**
@@ -130,6 +160,14 @@ int led_classdev_register(struct device *parent, struct led_classdev *led_cdev)
 	if (rc)
 		goto err_out;
 
+	rc = device_create_file(led_cdev->dev, &dev_attr_led_notify);
+	if (rc)
+		goto err_out_led_list1;
+
+	rc = device_create_file(led_cdev->dev, &dev_attr_led_color);
+	if (rc)
+		goto err_out_led_list3;
+
 #ifdef CONFIG_LEDS_TRIGGERS
 	init_rwsem(&led_cdev->trigger_lock);
 #endif
@@ -143,7 +181,7 @@ int led_classdev_register(struct device *parent, struct led_classdev *led_cdev)
 #ifdef CONFIG_LEDS_TRIGGERS
 	rc = device_create_file(led_cdev->dev, &dev_attr_trigger);
 	if (rc)
-		goto err_out_led_list;
+		goto err_out_led_list2;
 
 	led_trigger_set_default(led_cdev);
 #endif
@@ -154,10 +192,15 @@ int led_classdev_register(struct device *parent, struct led_classdev *led_cdev)
 	return 0;
 
 #ifdef CONFIG_LEDS_TRIGGERS
-err_out_led_list:
-	device_remove_file(led_cdev->dev, &dev_attr_brightness);
+err_out_led_list2:
+	device_remove_file(led_cdev->dev, &dev_attr_led_notify);
 	list_del(&led_cdev->node);
 #endif
+err_out_led_list1:
+	device_remove_file(led_cdev->dev, &dev_attr_brightness);
+err_out_led_list3:
+	device_remove_file(led_cdev->dev, &dev_attr_led_color);
+	list_del(&led_cdev->node);
 err_out:
 	device_unregister(led_cdev->dev);
 	return rc;
@@ -173,6 +216,8 @@ EXPORT_SYMBOL_GPL(led_classdev_register);
 void led_classdev_unregister(struct led_classdev *led_cdev)
 {
 	device_remove_file(led_cdev->dev, &dev_attr_brightness);
+	device_remove_file(led_cdev->dev, &dev_attr_led_notify);
+	device_remove_file(led_cdev->dev, &dev_attr_led_color);
 #ifdef CONFIG_LEDS_TRIGGERS
 	device_remove_file(led_cdev->dev, &dev_attr_trigger);
 	down_write(&led_cdev->trigger_lock);

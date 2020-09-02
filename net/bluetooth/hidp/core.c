@@ -1,4 +1,21 @@
 /*
+ * Certain software is contributed or developed by TOSHIBA CORPORATION.
+ *
+ * Copyright (C) 2010 TOSHIBA CORPORATION All rights reserved.
+ *
+ * This software is licensed under the terms of the GNU General Public
+ * License version 2, as published by FSF, and
+ * may be copied, distributed, and modified under those terms.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * This code is based on core.c.
+ * The original copyright and notice are described below.
+ */
+/*
    HIDP implementation for Linux Bluetooth stack (BlueZ).
    Copyright (C) 2003-2004 Marcel Holtmann <marcel@holtmann.org>
 
@@ -19,6 +36,7 @@
    COPYRIGHTS, TRADEMARKS OR OTHER RIGHTS, RELATING TO USE OF THIS
    SOFTWARE IS DISCLAIMED.
 */
+
 
 #include <linux/module.h>
 
@@ -374,6 +392,9 @@ static void hidp_process_hid_control(struct hidp_session *session,
 
 		/* Kill session thread */
 		atomic_inc(&session->terminate);
+/* Terminate on VIRTUAL_CABLE_UNPLUG: Added Start */
+		hidp_schedule(session);
+/* Terminate on VIRTUAL_CABLE_UNPLUG: Added End */
 	}
 }
 
@@ -787,11 +808,23 @@ err_hid:
 err:
 	return ret;
 }
-
+/* Get Report function : Start */
+int hidp_get_report(struct hidp_session * session, struct hid_report * report)
+{
+ 	unsigned char * data = (unsigned char *)kmalloc(report->size / 8 + 1, GFP_KERNEL);	
+	data[0] = report->id;
+	hidp_send_ctrl_message(session, HIDP_TRANS_GET_REPORT | HIDP_DATA_RTYPE_INPUT, data, report->size / 8 + 1);
+	kfree(data);
+	return 0;
+}
+/* Get Report function : End */
 int hidp_add_connection(struct hidp_connadd_req *req, struct socket *ctrl_sock, struct socket *intr_sock)
 {
 	struct hidp_session *session, *s;
 	int err;
+	/* Report struct : Start */
+	struct hid_report * report;
+	/* Report struct : End */
 
 	BT_DBG("");
 
@@ -830,6 +863,10 @@ int hidp_add_connection(struct hidp_connadd_req *req, struct socket *ctrl_sock, 
 	skb_queue_head_init(&session->intr_transmit);
 
 	session->flags   = req->flags & (1 << HIDP_BLUETOOTH_VENDOR_ID);
+/* Store VIRTUAL_CABLE_UNPLUG in flags Added Start */
+	session->flags	 |= (req->flags & (1 << HIDP_VIRTUAL_CABLE_UNPLUG));
+/* Store VIRTUAL_CABLE_UNPLUG in flags Added End */
+
 	session->idle_to = req->idle_to;
 
 	if (req->rd_size > 0) {
@@ -860,6 +897,10 @@ int hidp_add_connection(struct hidp_connadd_req *req, struct socket *ctrl_sock, 
 		session->leds = 0xff;
 		hidp_input_event(session->input, EV_LED, 0, 0);
 	}
+	/* Call get report for each report ID : Start */
+	list_for_each_entry(report, &session->hid->report_enum[HID_INPUT_REPORT].report_list, list)
+	hidp_get_report(session, report);
+    /* Call get report for each report ID : End */
 
 	up_write(&hidp_session_sem);
 	return 0;

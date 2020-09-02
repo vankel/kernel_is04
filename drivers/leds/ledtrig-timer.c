@@ -1,15 +1,21 @@
 /*
- * LED Kernel Timer Trigger
- *
- * Copyright 2005-2006 Openedhand Ltd.
- *
- * Author: Richard Purdie <rpurdie@openedhand.com>
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
- */
+  LED Core Driver
+  Copyright (C) 2010 TOSHIBA CORPORATION Mobile Communication Company.
+
+  This program is free software; you can redistribute it and/or
+  modify it under the terms of the GNU General Public License
+  as published by the Free Software Foundation; either version 2
+  of the License, or (at your option) any later version.
+
+  This program is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
+
+  You should have received a copy of the GNU General Public License
+  along with this program; if not, write to the Free Software
+  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA */
+
 
 #include <linux/module.h>
 #include <linux/jiffies.h>
@@ -151,9 +157,8 @@ static ssize_t led_delay_off_store(struct device *dev,
 
 	return ret;
 }
-
-static DEVICE_ATTR(delay_on, 0644, led_delay_on_show, led_delay_on_store);
-static DEVICE_ATTR(delay_off, 0644, led_delay_off_show, led_delay_off_store);
+static DEVICE_ATTR(delay_on, 0777, led_delay_on_show, led_delay_on_store);
+static DEVICE_ATTR(delay_off, 0777, led_delay_off_show, led_delay_off_store);
 
 static void timer_trig_activate(struct led_classdev *led_cdev)
 {

@@ -1,4 +1,21 @@
 /*
+ * Certain software is contributed or developed by TOSHIBA CORPORATION.
+ *
+ * Copyright (C) 2010 TOSHIBA CORPORATION All rights reserved.
+ *
+ * This software is licensed under the terms of the GNU General Public
+ * License version 2, as published by FSF, and
+ * may be copied, distributed, and modified under those terms.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * This code is based on logger.c.
+ * The original copyright and notice are described below.
+ */
+/*
  * drivers/misc/logger.c
  *
  * A Logging Subsystem
@@ -1078,6 +1095,17 @@ DEFINE_LOGGER_DEVICE(log_main, LOGGER_LOG_MAIN, 64*1024)
 DEFINE_LOGGER_DEVICE(log_events, LOGGER_LOG_EVENTS, 256*1024)
 DEFINE_LOGGER_DEVICE(log_radio, LOGGER_LOG_RADIO, 64*1024)
 
+
+extern unsigned const mainlog_tbl[4] =
+{
+        0x55aa11ff,
+        (unsigned)&mainlog_tbl[0],
+        (unsigned)&log_main.buffer,
+        (unsigned)&log_main.size
+};
+
+
+
 static struct logger_log *get_log_from_minor(const int minor)
 {
 	if (log_main.misc.minor == minor)
@@ -1190,7 +1218,8 @@ static int __init init_log(struct logger_log * const log)
 		"%s", log->misc.name);
 	if (ret)
 		goto out_put_kobj;
-
+        
+	printk("\n<LAL> virtual address of mainlog_tbl : [%x], physical address : [%x]====\n",mainlog_tbl, virt_to_phys(mainlog_tbl));
 	printk(KERN_INFO "logger: created %luK log '%s'\n",
 	       (unsigned long) log->size >> 10, log->misc.name);
 	goto out;

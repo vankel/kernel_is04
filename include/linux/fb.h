@@ -1,3 +1,20 @@
+/*
+ * Certain software is contributed or developed by TOSHIBA CORPORATION.
+ *
+ * Copyright (C) 2010 TOSHIBA CORPORATION All rights reserved.
+ *
+ * This software is licensed under the terms of the GNU General Public
+ * License version 2, as published by FSF, and
+ * may be copied, distributed, and modified under those terms.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * This code is based on fb.h.
+ * The original copyright and notice are described below.
+ */
 #ifndef _LINUX_FB_H
 #define _LINUX_FB_H
 
@@ -384,7 +401,8 @@ struct fb_cursor {
 
 #ifdef CONFIG_FB_BACKLIGHT
 /* Settings for the generic backlight code */
-#define FB_BACKLIGHT_LEVELS	128
+//#define FB_BACKLIGHT_LEVELS	128
+#define FB_BACKLIGHT_LEVELS	256
 #define FB_BACKLIGHT_MAX	0xFF
 #endif
 

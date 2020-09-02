@@ -1,4 +1,21 @@
 /*
+ * Certain software is contributed or developed by TOSHIBA CORPORATION.
+ *
+ * Copyright (C) 2010 TOSHIBA CORPORATION All rights reserved.
+ *
+ * This software is licensed under the terms of the GNU General Public
+ * License version 2, as published by FSF, and
+ * may be copied, distributed, and modified under those terms.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * This code is based on msm_nand.c.
+ * The original copyright and notice are described below.
+ */
+/*
  * Copyright (C) 2007 Google, Inc.
  * Copyright (c) 2008-2010, Code Aurora Forum. All rights reserved.
  *
@@ -63,6 +80,20 @@ uint32_t interleave_enable;
 #define FLASH_READ_ONFI_PARAMETERS_ADDRESS 0x00
 
 #define VERBOSE 0
+
+#define APPS_PARTITION_BOUNDNAME    "boot"
+static unsigned apps_partition_offset;
+
+static unsigned CFG0_M  = ((4 - 1) << 6)    /* 4cp/pg */
+                        | (512 << 9)        /* 512 user data bytes */
+                        | (10 << 19)        /* 10 parity bytes */
+                        | (5 << 27)         /* 5 address cycles */
+                        | (0 << 30)         /* Do not read status before data */
+                        | (1 << 31)         /* Send read cmd */
+                        | (4 << 23);        /* WIDE Flash */
+
+static unsigned cfg0_back;
+static uint32_t ecc_buf_cfg_back;
 
 struct msm_nand_chip {
 	struct device *dev;
@@ -387,6 +418,8 @@ static struct flash_identification supported_flash[] =
 	{0xd580b12c, 0xFFFFFFFF, (128<<20), 1, 2048, (2048<<6), 64, }, /*Micr*/
 	{0x5580baad, 0xFFFFFFFF, (256<<20), 1, 2048, (2048<<6), 64, }, /*Hynx*/
 	{0x5510baad, 0xFFFFFFFF, (256<<20), 1, 2048, (2048<<6), 64, }, /*Hynx*/
+	{0x0000b398, 0x0000FFFF,(1024<<20), 1, 2048, (2048<<6), 64, }, /*Tosh*/
+	{0x0000b320, 0x0000FFFF,(1024<<20), 1, 2048, (2048<<6), 64, }, /*Numo*/
 	/* Note: Width flag is 0 for 8 bit Flash and 1 for 16 bit flash      */
 	/* Note: The First row will be filled at runtime during ONFI probe   */
 };
@@ -788,6 +821,7 @@ static int msm_nand_read_oob(struct mtd_info *mtd, loff_t from,
 	uint32_t ecc_errors;
 	uint32_t total_ecc_errors = 0;
 	unsigned cwperpage;
+	unsigned partinfo = (apps_partition_offset > from) ? 1 : 0;
 
 	if (mtd->writesize == 2048)
 		page = from >> 11;
@@ -882,6 +916,14 @@ static int msm_nand_read_oob(struct mtd_info *mtd, loff_t from,
 	if (chip->CFG1 & CFG1_WIDE_FLASH)
 		oob_col >>= 1;
 
+    if ( partinfo )
+    {
+        cfg0_back         = chip->CFG0;
+        ecc_buf_cfg_back  = chip->ecc_buf_cfg;
+        chip->CFG0        = CFG0_M;
+        chip->ecc_buf_cfg = 0x1FF;
+    }
+
 	err = 0;
 	while (page_count-- > 0) {
 		cmd = dma_buffer->cmd;
@@ -973,8 +1015,14 @@ static int msm_nand_read_oob(struct mtd_info *mtd, loff_t from,
 			 */
 			if (ops->datbuf) {
 				if (ops->mode != MTD_OOB_RAW)
+				{
 					sectordatasize = (n < (cwperpage - 1))
 					? 516 : (512 - ((cwperpage - 1) << 2));
+					if ( partinfo )
+					{
+					    sectordatasize = 512;
+					}
+				}
 				else
 					sectordatasize = 528;
 
@@ -995,9 +1043,19 @@ static int msm_nand_read_oob(struct mtd_info *mtd, loff_t from,
 					sectoroobsize = (cwperpage << 2);
 					if (ops->mode != MTD_OOB_AUTO)
 						sectoroobsize += 10;
+					if ( partinfo )
+					{
+					    cmd->src = NAND_FLASH_BUFFER + 512;
+					    sectoroobsize = 14;
+					}
 				} else {
 					cmd->src = NAND_FLASH_BUFFER + 516;
 					sectoroobsize = 10;
+					if ( partinfo )
+					{
+					    cmd->src = NAND_FLASH_BUFFER + 512;
+					    sectoroobsize = 14;
+					}
 				}
 
 				cmd->dst = oob_dma_addr_curr;
@@ -1152,6 +1210,13 @@ err_dma_map_oobbuf_failed:
 		pr_err("msm_nand_read_oob %llx %x %x failed %d, corrected %d\n",
 		       from, ops->datbuf ? ops->len : 0, ops->ooblen, err,
 		       total_ecc_errors);
+
+    if ( partinfo )
+    {
+        chip->CFG0        = cfg0_back;
+        chip->ecc_buf_cfg = ecc_buf_cfg_back;
+    }
+
 	return err;
 }
 
@@ -2052,6 +2117,7 @@ msm_nand_write_oob(struct mtd_info *mtd, loff_t to, struct mtd_oob_ops *ops)
 	unsigned page_count;
 	unsigned pages_written = 0;
 	unsigned cwperpage;
+	unsigned partinfo = (apps_partition_offset > to) ? 1 : 0;
 
 	if (mtd->writesize == 2048)
 		page = to >> 11;
@@ -2133,6 +2199,14 @@ msm_nand_write_oob(struct mtd_info *mtd, loff_t to, struct mtd_oob_ops *ops)
 	wait_event(chip->wait_queue, (dma_buffer =
 			msm_nand_get_dma_buffer(chip, sizeof(*dma_buffer))));
 
+    if ( partinfo )
+    {
+        cfg0_back         = chip->CFG0;
+        ecc_buf_cfg_back  = chip->ecc_buf_cfg;
+        chip->CFG0        = CFG0_M;
+        chip->ecc_buf_cfg = 0x1FF;
+    }
+
 	while (page_count-- > 0) {
 		cmd = dma_buffer->cmd;
 
@@ -2195,8 +2269,14 @@ msm_nand_write_oob(struct mtd_info *mtd, loff_t to, struct mtd_oob_ops *ops)
 
 				/* write data block */
 			if (ops->mode != MTD_OOB_RAW)
+			{
 				sectordatawritesize = (n < (cwperpage - 1)) ?
 					516 : (512 - ((cwperpage - 1) << 2));
+				if ( partinfo )
+				{
+				    sectordatawritesize = 512;
+				}
+			}
 			else
 				sectordatawritesize = 528;
 
@@ -2333,6 +2413,13 @@ err_dma_map_oobbuf_failed:
 	if (err)
 		pr_err("msm_nand_write_oob %llx %x %x failed %d\n",
 		       to, ops->len, ops->ooblen, err);
+
+    if ( partinfo )
+    {
+        chip->CFG0        = cfg0_back;
+        chip->ecc_buf_cfg = ecc_buf_cfg_back;
+    }
+
 	return err;
 }
 
@@ -6801,6 +6888,11 @@ static void setup_mtd_device(struct platform_device *pdev,
 			* info->mtd.erasesize;
 		pdata->parts[i].size = pdata->parts[i].size
 			* info->mtd.erasesize;
+		if (!strcmp(pdata->parts[i].name, APPS_PARTITION_BOUNDNAME))
+		{
+			apps_partition_offset = pdata->parts[i].offset;
+			pr_info("APPS OFFSET: 0x%08x \n", apps_partition_offset);
+		}
 	}
 
 	nr_parts = parse_mtd_partitions(&info->mtd, part_probes, &info->parts,

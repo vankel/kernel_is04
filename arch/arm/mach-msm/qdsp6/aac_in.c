@@ -1,4 +1,21 @@
 /*
+ * Certain software is contributed or developed by TOSHIBA CORPORATION.
+ *
+ * Copyright (C) 2010 TOSHIBA CORPORATION All rights reserved.
+ *
+ * This software is licensed under the terms of the GNU General Public
+ * License version 2, as published by FSF, and
+ * may be copied, distributed, and modified under those terms.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * This code is based on aac_in.c.
+ * The original copyright and notice are described below.
+ */
+/*
  * Copyright (C) 2009 Google, Inc.
  * Copyright (C) 2009 HTC Corporation
  * Copyright (c) 2010, Code Aurora Forum. All rights reserved.
@@ -201,8 +218,13 @@ static ssize_t q6_aac_in_read(struct file *file, char __user *buf,
 
 	ab = ac->buf + ac->cpu_buf;
 
-	if (ab->used)
-		wait_event(ac->wait, (ab->used == 0));
+	if (ab->used){
+		int rc = wait_event_timeout(ac->wait, (ab->used == 0), HZ * 5/10); //500msec wait
+		if(rc == 0){
+			res = -EBUSY;
+			goto fail;
+		}
+	}
 
 	xfer = ab->actual_size;
 

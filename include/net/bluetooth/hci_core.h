@@ -1,4 +1,21 @@
 /*
+ * Certain software is contributed or developed by TOSHIBA CORPORATION.
+ *
+ * Copyright (C) 2010 TOSHIBA CORPORATION All rights reserved.
+ *
+ * This software is licensed under the terms of the GNU General Public
+ * License version 2, as published by FSF, and
+ * may be copied, distributed, and modified under those terms.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * This code is based on hci_core.h.
+ * The original copyright and notice are described below.
+ */
+/*
    BlueZ - Bluetooth protocol stack for Linux
    Copyright (c) 2000-2001, 2010, Code Aurora Forum. All rights reserved.
 
@@ -181,7 +198,11 @@ struct hci_conn {
 	struct timer_list disc_timer;
 	struct timer_list idle_timer;
 
-	struct work_struct work;
+	/* Using seperate work structs for add and delete: Start */	
+	//struct work_struct work;
+	struct work_struct addwork;
+	struct work_struct delwork; 
+	/* Using seperate work structs for add and delete: End */
 
 	struct device	dev;
 
@@ -191,6 +212,9 @@ struct hci_conn {
 	void		*priv;
 
 	struct hci_conn	*link;
+	/* Added disconnect timeout field: Start */
+	__u16		disc_timeout;
+	/* Added disconnect timeout field: End */
 };
 
 extern struct hci_proto *hci_proto[];
@@ -350,9 +374,12 @@ static inline void hci_conn_put(struct hci_conn *conn)
 		if (conn->type == ACL_LINK) {
 			del_timer(&conn->idle_timer);
 			if (conn->state == BT_CONNECTED) {
-				timeo = msecs_to_jiffies(HCI_DISCONN_TIMEOUT);
+				/* Use timeout value as specified by caller: Start */
+				//timeo = msecs_to_jiffies(HCI_DISCONN_TIMEOUT);
+				timeo = msecs_to_jiffies(conn->disc_timeout);
 				if (!conn->out)
-					timeo *= 5;
+					timeo *= 20; //Previously 5
+				/* Use timeout value as specified by caller: End */
 			} else
 				timeo = msecs_to_jiffies(10);
 		} else

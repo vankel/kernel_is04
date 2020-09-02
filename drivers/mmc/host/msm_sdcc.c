@@ -1,4 +1,22 @@
 /*
+ * Certain software is contributed or developed by TOSHIBA CORPORATION.
+ *
+ * Copyright (C) 2010 TOSHIBA CORPORATION All rights reserved.
+ *
+ * This software is licensed under the terms of the GNU General Public
+ * License version 2, as published by FSF, and
+ * may be copied, distributed, and modified under those terms.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * This code is based on msm_sdcc.c.
+ * The original copyright and notice are described below.
+ */
+
+/*
  *  linux/drivers/mmc/host/msm_sdcc.c - Qualcomm MSM 7X00A SDCC Driver
  *
  *  Copyright (C) 2007 Google Inc,
@@ -14,6 +32,7 @@
  * Author: San Mehat (san@android.com)
  *
  */
+
 
 #include <linux/module.h>
 #include <linux/moduleparam.h>
@@ -91,6 +110,7 @@ static struct mmc_command dummy52cmd = {
 };
 
 #define VERBOSE_COMMAND_TIMEOUTS	0
+
 
 #if IRQ_DEBUG == 1
 static char *irq_status_bits[] = { "cmdcrcfail", "datcrcfail", "cmdtimeout",
@@ -403,6 +423,7 @@ static int msmsdcc_config_dma(struct msmsdcc_host *host, struct mmc_data *data)
 	else
 		host->dma.dir = DMA_TO_DEVICE;
 
+
 	/* host->curr.user_pages = (data->flags & MMC_DATA_USERPAGE); */
 	host->curr.user_pages = 0;
 	box = &nc->cmd[0];
@@ -653,7 +674,6 @@ msmsdcc_pio_write(struct msmsdcc_host *host, char *buffer,
 {
 	void __iomem *base = host->base;
 	char *ptr = buffer;
-
 	do {
 		unsigned int count, maxcnt;
 
@@ -994,7 +1014,6 @@ msmsdcc_request(struct mmc_host *mmc, struct mmc_request *mrq)
 		if ((mrq->cmd->opcode == SD_IO_RW_EXTENDED) && (mrq->data))
 			host->dummy_52_needed = 1;
 	}
-
 	msmsdcc_request_start(host, mrq);
 	spin_unlock_irqrestore(&host->lock, flags);
 }
@@ -1016,8 +1035,13 @@ msmsdcc_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 			host->clks_on = 1;
 		}
 
-		if ((ios->clock < msmsdcc_fmax) && (ios->clock > msmsdcc_fmid))
+		if ((ios->clock < msmsdcc_fmax) && (ios->clock > msmsdcc_fmid)) {
+			#if 0
 			ios->clock = msmsdcc_fmid;
+			#else
+			ios->clock = msmsdcc_temp;
+			#endif
+		}
 
 		if (ios->clock != host->clk_rate) {
 			rc = clk_set_rate(host->clk, ios->clock);
@@ -1250,10 +1274,26 @@ set_polling(struct device *dev, struct device_attribute *attr,
 	return count;
 }
 
+static ssize_t
+set_detect_change(struct device *dev, struct device_attribute *attr,
+		const char *buf, size_t count)
+{
+	struct mmc_host *mmc = dev_get_drvdata(dev);
+	struct msmsdcc_host *host = mmc_priv(mmc);
+	int value;
+	if (sscanf(buf, "%d", &value)==1 && value) {
+        mmc_detect_change(host->mmc, 0);
+    }
+	return count;
+}
+static DEVICE_ATTR(detect_change, S_IRUGO | S_IWUSR,
+		NULL, set_detect_change);
+
 static DEVICE_ATTR(polling, S_IRUGO | S_IWUSR,
 		show_polling, set_polling);
 static struct attribute *dev_attrs[] = {
 	&dev_attr_polling.attr,
+    &dev_attr_detect_change.attr,
 	NULL,
 };
 static struct attribute_group dev_attr_grp = {
@@ -1353,6 +1393,7 @@ msmsdcc_probe(struct platform_device *pdev)
 	host->memres = memres;
 	host->dmares = dmares;
 	spin_lock_init(&host->lock);
+
 
 #ifdef CONFIG_MMC_EMBEDDED_SDIO
 	if (plat->embedded_sdio)
@@ -1637,9 +1678,16 @@ msmsdcc_suspend(struct platform_device *dev, pm_message_t state)
 	if (mmc) {
 		if (host->plat->status_irq)
 			disable_irq(host->plat->status_irq);
-
+#if 1
+		rc = mmc_suspend_host(mmc, state);
+		if (rc!=0) {
+			if (host->plat->status_irq)
+				enable_irq(host->plat->status_irq);
+		}
+#else
 		if (!mmc->card || mmc->card->type != MMC_TYPE_SDIO)
 			rc = mmc_suspend_host(mmc, state);
+#endif
 		if (!rc) {
 			writel(0, host->base + MMCIMASK0);
 
@@ -1682,7 +1730,11 @@ msmsdcc_resume(struct platform_device *dev)
 		if (host->plat->sdiowakeup_irq)
 			disable_irq(host->plat->sdiowakeup_irq);
 
+#if 1
+		if (1) {
+#else
 		if (!mmc->card || mmc->card->type != MMC_TYPE_SDIO) {
+#endif
 #ifdef CONFIG_MMC_MSM7X00A_RESUME_IN_WQ
 			schedule_work(&host->resume_task);
 #else

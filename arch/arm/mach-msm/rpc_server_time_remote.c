@@ -1,3 +1,20 @@
+/*
+ * Certain software is contributed or developed by TOSHIBA CORPORATION.
+ *
+ * Copyright (C) 2010 TOSHIBA CORPORATION All rights reserved.
+ *
+ * This software is licensed under the terms of the GNU General Public
+ * License version 2, as published by FSF, and
+ * may be copied, distributed, and modified under those terms.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * This code is based on arch/arm/mach-msm/rpc_server_time_remote.c.
+ * The original copyright and notice are described below.
+ */
 /* arch/arm/mach-msm/rpc_server_time_remote.c
  *
  * Copyright (C) 2007 Google, Inc.
@@ -21,6 +38,9 @@
 #include <mach/msm_rpcrouter.h>
 #include "rpc_server_time_remote.h"
 #include <linux/rtc.h>
+#include <linux/fs.h>
+#include <linux/android_alarm.h>
+#include <linux/syscalls.h>
 
 /* time_remote_mtoa server definitions. */
 
@@ -96,6 +116,100 @@ send_reply:
 	return 1;
 }
 
+static unsigned int rpc_remote_autosettime;
+static unsigned int rpc_remote_lastsectime;
+
+static int rpc_android_alarm_set_rtc(void)
+{
+	int err;
+	struct rtc_time tm;
+	struct rtc_device *rtc = rtc_class_open(CONFIG_RTC_HCTOSYS_DEVICE);
+
+	if (rtc == NULL) {
+		pr_err("%s: Unable to open rtc device (%s)\n",
+			__FILE__, CONFIG_RTC_HCTOSYS_DEVICE);
+		goto return_fun;
+	}
+
+	err = rtc_read_time(rtc, &tm);
+	if (err) {
+		pr_err("rpc_android_alarm_set_rtc: "
+			"Error reading rtc device (%s) : %d\n",
+			CONFIG_RTC_HCTOSYS_DEVICE, err);
+		goto close_dev;
+	}
+
+	err = rtc_valid_tm(&tm);
+	if (err) {
+		pr_err("rpc_android_alarm_set_rtc: "
+			"Invalid RTC time (%s)\n",
+			CONFIG_RTC_HCTOSYS_DEVICE);
+		goto close_dev;
+	}
+	else {
+		struct timespec tv;
+		unsigned int tm_delta;
+		long res = -1;
+
+		tv.tv_nsec = NSEC_PER_SEC >> 1;
+		rtc_tm_to_time(&tm, &tv.tv_sec);
+		tm_delta = (unsigned int) tv.tv_sec;
+
+		tm_delta = (tm_delta >= rpc_remote_lastsectime) ?
+			(tm_delta - rpc_remote_lastsectime) :
+			(rpc_remote_lastsectime - tm_delta);
+
+		pr_debug("rpc_remote_autosettime=%d, tm_delta=%d\n",
+			rpc_remote_autosettime, tm_delta);
+
+		if ((rpc_remote_autosettime == 0) || (tm_delta >= 60)) {
+			long fd = sys_open("/dev/alarm", O_RDWR, 0);
+			if(fd < 0) {
+				pr_err("rpc_android_alarm_set_rtc: "
+					"Unable to open alarm driver\n");
+			}
+			else {
+				pr_debug("rpc_android_alarm_set_rtc: "
+					"ANDROID_ALARM_SET_RTC\n");
+
+				res = sys_ioctl((unsigned int)fd, 
+					ANDROID_ALARM_SET_RTC, (unsigned long)&tv);
+				sys_close((unsigned int)fd);
+			}
+		}
+		else {
+			pr_info("rpc_android_alarm_set_rtc: skipped to do_settimeofday\n");
+			res = 0;
+		}
+
+		if(res < 0) {
+	        pr_err("rpc_android_alarm_set_rtc: "
+				"Failed(%ld) to set system clock to "
+				"%d-%02d-%02d %02d:%02d:%02d UTC (%u)\n",
+				res, tm.tm_year + 1900, tm.tm_mon + 1,
+				tm.tm_mday, tm.tm_hour, tm.tm_min,
+				tm.tm_sec, (unsigned int) tv.tv_sec);
+		}
+		else {
+			rpc_remote_autosettime = 1;
+			rpc_remote_lastsectime = (unsigned int) tv.tv_sec;
+
+			pr_info("rpc_android_alarm_set_rtc: "
+				"Succeeded to set system clock to "
+				"%d-%02d-%02d %02d:%02d:%02d UTC (%u)\n",
+				tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday,
+				tm.tm_hour, tm.tm_min, tm.tm_sec,
+				(unsigned int) tv.tv_sec);
+		}
+	}
+
+close_dev:
+	rtc_class_close(rtc);
+
+return_fun:
+	return 0;
+}
+
 static int handle_rpc_call(struct msm_rpc_server *server,
 			   struct rpc_request_hdr *req, unsigned len)
 {
@@ -105,6 +219,16 @@ static int handle_rpc_call(struct msm_rpc_server *server,
 
 	case RPC_TIME_TOD_SET_APPS_BASES: {
 		struct rpc_time_tod_set_apps_bases_args *args;
+		struct kstat temp_state;
+
+		if (vfs_stat("/data/data/com.android.settings/files"
+				"/autotime.disabled", &temp_state) == 0) {
+			rpc_remote_autosettime = 0;
+			printk(KERN_INFO "RPC_TIME_TOD_SET_APPS_BASES:\n"
+				"\tautotime.disabled\n");
+			return 0;
+		}
+
 		args = (struct rpc_time_tod_set_apps_bases_args *)(req + 1);
 		args->tick = be32_to_cpu(args->tick);
 		args->stamp = be64_to_cpu(args->stamp);
@@ -112,7 +236,7 @@ static int handle_rpc_call(struct msm_rpc_server *server,
 		       "\ttick = %d\n"
 		       "\tstamp = %lld\n",
 		       args->tick, args->stamp);
-		rtc_hctosys();
+		rpc_android_alarm_set_rtc();
 		return 0;
 	}
 
@@ -146,6 +270,10 @@ static int __init rpc_server_init(void)
 {
 	/* Dual server registration to support backwards compatibility vers */
 	int ret;
+
+	rpc_remote_autosettime = 0;
+	rpc_remote_lastsectime = 0;
+
 	ret = msm_rpc_create_server(&rpc_server[2]);
 	if (ret < 0)
 		return ret;

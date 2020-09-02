@@ -34,7 +34,7 @@ ifeq ($(CONFIG_USB_ANDROID_CDC_ECM),y)
 F_ECM = f_ecm.o
 endif
 ifeq ($(CONFIG_USB_F_SERIAL),y)
-F_SERIAL = f_serial.o
+F_SERIAL = f_serial.o f_lismo.o
 endif
 
 ifeq ($(CONFIG_USB_ANDROID_RMNET),y)
@@ -54,7 +54,7 @@ g_file_storage-objs		:= file_storage.o
 g_printer-objs			:= printer.o
 g_cdc-objs			:= cdc2.o
 g_android-objs			:= android.o f_adb.o f_mass_storage.o \
-					u_serial.o f_acm.o u_ether.o \
+					u_serial.o f_acm.o u_ether.o switch_notification.o \
 					$(F_ECM) $(F_SERIAL) $(F_DIAG) \
 					$(F_RMNET) $(F_RNDIS)
 

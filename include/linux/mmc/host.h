@@ -1,4 +1,23 @@
 /*
+
+* Certain software is contributed or developed by TOSHIBA CORPORATION.
+*
+* Copyright (C) 2010 TOSHIBA CORPORATION All rights reserved.
+*
+* This software is licensed under the terms of the GNU General Public
+* License version 2, as published by FSF, and
+* may be copied, distributed, and modified under those terms.
+*
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+*
+* This code is based on host.h.
+* The original copyright and notice are described below.
+*/
+
+/*
  *  linux/include/linux/mmc/host.h
  *
  * This program is free software; you can redistribute it and/or modify
@@ -7,6 +26,7 @@
  *
  *  Host driver specific definitions.
  */
+
 #ifndef LINUX_MMC_HOST_H
 #define LINUX_MMC_HOST_H
 
@@ -148,7 +168,8 @@ struct mmc_host {
 	struct mmc_card		*card;		/* device attached to this host */
 
 	wait_queue_head_t	wq;
-
+        struct task_struct      *claimer;       /* task that has host claimed */
+        int                     claim_cnt;      /* "claim" nesting count */
 	struct delayed_work	detect;
 
 	const struct mmc_bus_ops *bus_ops;	/* current bus driver */
@@ -184,6 +205,7 @@ struct mmc_host {
 	int			idle_timeout;
 	unsigned long		auto_suspend_state;
 #endif
+    int    suspend_keep_power;
 	unsigned long		private[0] ____cacheline_aligned;
 };
 

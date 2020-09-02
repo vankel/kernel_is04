@@ -158,6 +158,9 @@ obj-$(CONFIG_VIDEO_AU0828) += au0828/
 obj-$(CONFIG_USB_VIDEO_CLASS)	+= uvc/
 
 obj-$(CONFIG_MSM_CAMERA) += msm/
+# TG03_001 <S>
+obj-$(CONFIG_TSB_CAMERA_TG03) += msm_tg03/
+# TG03_001 <E>
 
 EXTRA_CFLAGS += -Idrivers/media/dvb/dvb-core
 EXTRA_CFLAGS += -Idrivers/media/dvb/frontends

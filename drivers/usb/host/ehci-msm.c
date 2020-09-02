@@ -1,3 +1,22 @@
+/*
+
+* Certain software is contributed or developed by TOSHIBA CORPORATION.
+*
+* Copyright (C) 2010 TOSHIBA CORPORATION All rights reserved.
+*
+* This software is licensed under the terms of the GNU General Public
+* License version 2, as published by FSF, and
+* may be copied, distributed, and modified under those terms.
+*
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+*
+* This code is based on ehci-msm.c.
+* The original copyright and notice are described below.
+*/
+
 /* ehci-msm.c - HSUSB Host Controller Driver Implementation
  *
  * Copyright (c) 2008-2009, Code Aurora Forum. All rights reserved.
@@ -628,7 +647,10 @@ static void msm_hsusb_request_host(void *handle, int request)
 		msm_xusb_pm_qos_update(mhcd, 0);
 #ifdef CONFIG_USB_MSM_OTG_72K
 		if (PHY_TYPE(pdata->phy_info) == USB_PHY_INTEGRATED)
+		{
 			otg_set_suspend(mhcd->xceiv, 1);
+			hsusb_cable_det_notifi_disconnect();
+		}
 #endif
 		break;
 	}

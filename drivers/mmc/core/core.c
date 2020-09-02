@@ -1,4 +1,23 @@
 /*
+
+* Certain software is contributed or developed by TOSHIBA CORPORATION.
+*
+* Copyright (C) 2010 TOSHIBA CORPORATION All rights reserved.
+*
+* This software is licensed under the terms of the GNU General Public
+* License version 2, as published by FSF, and
+* may be copied, distributed, and modified under those terms.
+*
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+*
+* This code is based on core.c.
+* The original copyright and notice are described below.
+*/
+
+/*
  *  linux/drivers/mmc/core/core.c
  *
  *  Copyright (C) 2003-2004 Russell King, All Rights Reserved.
@@ -10,6 +29,8 @@
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
  */
+
+
 #include <linux/module.h>
 #include <linux/init.h>
 #include <linux/interrupt.h>
@@ -889,6 +910,11 @@ void mmc_rescan(struct work_struct *work)
 		if (mmc_attach_sd(host, ocr))
 			mmc_power_off(host);
 		extend_wakelock = 1;
+
+		if ((host->bus_ops != NULL) && host->bus_ops->detect) {
+			host->bus_ops->detect(host);
+		}
+
 		goto out;
 	}
 
@@ -986,6 +1012,9 @@ int mmc_suspend_host(struct mmc_host *host, pm_message_t state)
 		}
 	}
 	mmc_bus_put(host);
+#if 1
+    if (!host->suspend_keep_power)
+#endif
 	mmc_power_off(host);
 	return 0;
 }
@@ -998,6 +1027,9 @@ EXPORT_SYMBOL(mmc_suspend_host);
  */
 int mmc_resume_host(struct mmc_host *host)
 {
+#if 1
+	int suspend_keep_power = host->suspend_keep_power;
+#endif
 	mmc_bus_get(host);
 	if (host->bus_resume_flags & MMC_BUSRESUME_MANUAL_RESUME) {
 		host->bus_resume_flags |= MMC_BUSRESUME_NEEDS_RESUME;
@@ -1006,6 +1038,9 @@ int mmc_resume_host(struct mmc_host *host)
 	}
 
 	if (host->bus_ops && !host->bus_dead) {
+#if 1
+		if (!suspend_keep_power)
+#endif
 		mmc_power_up(host);
 		mmc_select_voltage(host, host->ocr);
 		BUG_ON(!host->bus_ops->resume);
@@ -1017,6 +1052,9 @@ int mmc_resume_host(struct mmc_host *host)
 	 * We add a slight delay here so that resume can progress
 	 * in parallel.
 	 */
+#if 1
+	if (!suspend_keep_power)
+#endif
 	mmc_detect_change(host, 1);
 
 	return 0;

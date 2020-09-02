@@ -1,4 +1,23 @@
 /*
+
+* Certain software is contributed or developed by TOSHIBA CORPORATION.
+*
+* Copyright (C) 2010 TOSHIBA CORPORATION All rights reserved.
+*
+* This software is licensed under the terms of the GNU General Public
+* License version 2, as published by FSF, and
+* may be copied, distributed, and modified under those terms.
+*
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+*
+* This code is based on f_mass_storage.c.
+* The original copyright and notice are described below.
+*/
+
+/*
  * drivers/usb/gadget/f_mass_storage.c
  *
  * Function Driver for USB Mass Storage
@@ -41,6 +60,7 @@
  * LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
  * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ *
  */
 
 /* #define DEBUG */
@@ -1840,7 +1860,10 @@ static int check_command(struct fsg_dev *fsg, int cmnd_size,
 		/* Special case workaround: MS-Windows issues REQUEST SENSE/
 		 * INQUIRY with cbw->Length == 12 (it should be 6). */
 		if ((fsg->cmnd[0] == SC_REQUEST_SENSE && fsg->cmnd_size == 12)
-		 || (fsg->cmnd[0] == SC_INQUIRY && fsg->cmnd_size == 12))
+		 || (fsg->cmnd[0] == SC_INQUIRY && fsg->cmnd_size == 12)
+		 || (fsg->cmnd[0] == SC_TEST_UNIT_READY && fsg->cmnd_size == 12)
+		 || (fsg->cmnd[0] == SC_MODE_SENSE_10 && fsg->cmnd_size == 12)
+		 )
 			cmnd_size = fsg->cmnd_size;
 		else {
 			fsg->phase_error = 1;
@@ -2851,7 +2874,12 @@ fsg_function_bind(struct usb_configuration *c, struct usb_function *f)
 		goto out;
 	}
 	fsg->nluns = i;
-
+        if(!fsg->vendor){
+            fsg->vendor = "Toshiba";
+        }
+        if(!fsg->product){
+            fsg->product = "Mass Storage";
+        }
 	for (i = 0; i < fsg->nluns; ++i) {
 		curlun = &fsg->luns[i];
 		curlun->ro = 0;

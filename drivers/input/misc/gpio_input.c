@@ -1,3 +1,20 @@
+/*
+ * Certain software is contributed or developed by TOSHIBA CORPORATION.
+ *
+ * Copyright (C) 2010 TOSHIBA CORPORATION All rights reserved.
+ *
+ * This software is licensed under the terms of the GNU General Public
+ * License version 2, as published by FSF, and
+ * may be copied, distributed, and modified under those terms.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * This code is based on gpio_input.c.
+ * The original copyright and notice are described below.
+ */
 /* drivers/input/misc/gpio_input.c
  *
  * Copyright (C) 2007 Google, Inc.
@@ -12,7 +29,6 @@
  * GNU General Public License for more details.
  *
  */
-
 #include <linux/kernel.h>
 #include <linux/gpio.h>
 #include <linux/gpio_event.h>
@@ -47,6 +63,10 @@ struct gpio_input_state {
 	struct wake_lock wake_lock;
 	struct gpio_key_state key_state[0];
 };
+
+static bool headsethook_en = false;
+
+static int key_flag = 0;
 
 static enum hrtimer_restart gpio_event_input_timer_func(struct hrtimer *timer)
 {
@@ -126,8 +146,30 @@ static enum hrtimer_restart gpio_event_input_timer_func(struct hrtimer *timer)
 			pr_info("gpio_keys_scan_keys: key %x-%x, %d (%d) "
 				"changed to %d\n", ds->info->type,
 				key_entry->code, i, key_entry->gpio, pressed);
+		if(key_entry->code == 79)
+		{
+			if(!headsethook_en) continue;
+			if(pressed ==0)
+			{
+				pressed = 1;
+			}
+			else
+			{
+				pressed = 0;
+			}
+		}
+		if(key_entry->code == 212){
+			if(pressed ==1){
+				key_flag = 1;
+			}else{
+				key_flag = 0;
+			}
+		}
+		if((key_entry->code == 372)&&(key_flag == 1)){
+		}else{
 		input_event(ds->input_devs->dev[key_entry->dev], ds->info->type,
 			    key_entry->code, pressed);
+		}
 	}
 
 #if 0
@@ -193,8 +235,30 @@ static irqreturn_t gpio_event_input_irq_handler(int irq, void *dev_id)
 				"(%d) changed to %d\n",
 				ds->info->type, key_entry->code, keymap_index,
 				key_entry->gpio, pressed);
+		if(key_entry->code == 79)
+		{
+			if(!headsethook_en) return IRQ_HANDLED;
+			if(pressed ==0)
+			{
+				pressed = 1;
+			}
+			else
+			{
+				pressed = 0;
+			}
+		}
+		if(key_entry->code == 212){
+			if(pressed == 1){
+				key_flag = 1;
+			}else{
+				key_flag = 0;
+			}
+		}
+		if((key_entry->code == 372)&&(key_flag == 1)){
+		}else{
 		input_event(ds->input_devs->dev[key_entry->dev], ds->info->type,
 			    key_entry->code, pressed);
+		}
 	}
 	return IRQ_HANDLED;
 }
@@ -352,3 +416,9 @@ err_bad_keymap:
 err_ds_alloc_failed:
 	return ret;
 }
+
+void gpio_event_input_headsethook_enable(bool en)
+{
+	headsethook_en = en;
+}
+EXPORT_SYMBOL(gpio_event_input_headsethook_enable);

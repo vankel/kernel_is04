@@ -1,4 +1,23 @@
 /*
+
+* Certain software is contributed or developed by TOSHIBA CORPORATION.
+*
+* Copyright (C) 2010 TOSHIBA CORPORATION All rights reserved.
+*
+* This software is licensed under the terms of the GNU General Public
+* License version 2, as published by FSF, and
+* may be copied, distributed, and modified under those terms.
+*
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+*
+* This code is based on u_serial.c
+* The original copyright and notice are described below.
+*/
+
+/*
  * u_serial.c - utilities for USB gadget "serial port"/TTY support
  *
  * Copyright (C) 2003 Al Borchers (alborchers@steinerpoint.com)
@@ -1226,7 +1245,7 @@ int gserial_setup(struct usb_gadget *g, unsigned count)
 
 	pr_debug("%s: registered %d ttyGS* device%s\n", __func__,
 			count, (count == 1) ? "" : "s");
-
+	
 	return status;
 fail:
 	while (count--)
@@ -1241,7 +1260,9 @@ static int gs_closed(struct gs_port *port)
 	int cond;
 
 	spin_lock_irq(&port->port_lock);
-	cond = (port->open_count == 0) && !port->openclose;
+
+	cond=1;
+
 	spin_unlock_irq(&port->port_lock);
 	return cond;
 }

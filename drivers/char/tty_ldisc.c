@@ -512,7 +512,7 @@ restart:
 			/* Free the new ldisc we grabbed. Must drop the lock
 			   first. */
 			spin_unlock_irqrestore(&tty_ldisc_lock, flags);
-			tty_ldisc_put(o_ldisc.ops);
+             tty_ldisc_put(new_ldisc.ops);
 			/*
 			 * There are several reasons we may be busy, including
 			 * random momentary I/O traffic. We must therefore

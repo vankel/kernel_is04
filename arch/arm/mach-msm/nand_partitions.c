@@ -1,3 +1,20 @@
+/*
+ * Certain software is contributed or developed by TOSHIBA CORPORATION.
+ *
+ * Copyright (C) 2010 TOSHIBA CORPORATION All rights reserved.
+ *
+ * This software is licensed under the terms of the GNU General Public
+ * License version 2, as published by FSF, and
+ * may be copied, distributed, and modified under those terms.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * This code is based on nand_partitions.c.
+ * The original copyright and notice are described below.
+ */
 /* arch/arm/mach-msm/nand_partitions.c
  *
  * Code to extract partition information from ATAG set up by the
@@ -46,7 +63,7 @@ struct msm_ptbl_entry {
 	__u32 flags;
 };
 
-#define MSM_MAX_PARTITIONS 8
+#define MSM_MAX_PARTITIONS 12
 
 static struct mtd_partition msm_nand_partitions[MSM_MAX_PARTITIONS];
 static char msm_nand_names[MSM_MAX_PARTITIONS * 16];

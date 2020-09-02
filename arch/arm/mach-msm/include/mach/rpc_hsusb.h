@@ -1,3 +1,23 @@
+/*
+
+* Certain software is contributed or developed by TOSHIBA CORPORATION.
+*
+* Copyright (C) 2010 TOSHIBA CORPORATION All rights reserved.
+*
+* This software is licensed under the terms of the GNU General Public
+* License version 2, as published by FSF, and
+* may be copied, distributed, and modified under those terms.
+*
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+*
+* This code is based on rpc_hsub.h
+* The original copyright and notice are described below.
+*/
+
+
 /* linux/include/mach/rpc_hsusb.h
  *
  * Copyright (c) 2008-2009, Code Aurora Forum. All rights reserved.
@@ -17,6 +37,7 @@
  * You should have received a copy of the GNU General Public License
  * along with this program; if not, you can find it at http://www.fsf.org
  */
+
 
 #ifndef __ASM_ARCH_MSM_RPC_HSUSB_H
 #define __ASM_ARCH_MSM_RPC_HSUSB_H
@@ -50,6 +71,13 @@ void hsusb_chg_vbus_draw(unsigned mA);
 void hsusb_chg_connected(enum chg_type chgtype);
 #endif
 
+int hsusb_cable_det_notifi_initialize_complete(uint32_t drv);
+int hsusb_cable_det_notifi_disconnect(void);
+int hsusb_cable_det_notifi_suspend(uint32_t drv);
+int hsusb_cable_det_notifi_resume(uint32_t drv);
+int hsusb_cable_usb_vdd_off(void);
+int hsusb_cable_det_notifi_earphone_status(int status);
+#define CABLE_DET_USB_DRV 0x0000
 
 int msm_fsusb_rpc_init(struct msm_otg_ops *ops);
 int msm_fsusb_init_phy(void);
