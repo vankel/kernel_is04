@@ -1279,7 +1279,6 @@ static int kgsl_ioctl_sharedmem_from_pmem(struct kgsl_file_private *private,
 	struct kgsl_mem_entry *entry = NULL;
 	unsigned long start = 0, len = 0;
 	struct file *pmem_file = NULL;
-	uint64_t total_offset;
 
 	if (copy_from_user(&param, arg, sizeof(param))) {
 		result = -EFAULT;
@@ -1294,8 +1293,7 @@ static int kgsl_ioctl_sharedmem_from_pmem(struct kgsl_file_private *private,
 		if (!param.len)
 			param.len = len;
 
-		total_offset = param.offset + param.len;
-		if (total_offset > (uint64_t)len) {
+		if (param.offset + param.len > len) {
 			KGSL_DRV_ERR("%s: region too large "
 					"0x%x + 0x%x >= 0x%lx\n",
 				     __func__, param.offset, param.len, len);
@@ -1333,12 +1331,7 @@ static int kgsl_ioctl_sharedmem_from_pmem(struct kgsl_file_private *private,
 
 	/* If the offset is not at 4K boundary then add the correct offset
 	 * value to gpuaddr */
-	total_offset = entry->memdesc.gpuaddr + (param.offset & ~KGSL_PAGEMASK);
-	if (total_offset > (uint64_t)UINT_MAX) {
-		result = -EINVAL;
-		goto error_unmap_entry;
-	}
-	entry->memdesc.gpuaddr = total_offset;
+	entry->memdesc.gpuaddr += (param.offset & ~KGSL_PAGEMASK);
 	param.gpuaddr = entry->memdesc.gpuaddr;
 
 	if (copy_to_user(arg, &param, sizeof(param))) {
@@ -1534,9 +1527,6 @@ static int kgsl_mmap(struct file *file, struct vm_area_struct *vma)
 			goto done;
 		}
 		memdesc = &device->memstore;
-	} else {
-		result = -EINVAL;
-		goto done;
 	}
 
 	if (memdesc->size != vma_size) {
