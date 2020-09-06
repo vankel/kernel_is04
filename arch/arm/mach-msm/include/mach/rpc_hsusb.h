@@ -1,3 +1,16 @@
+/*
+* Certain software is contributed or developed by TOSHIBA CORPORATION.
+* Copyright (C) 2010 TOSHIBA CORPORATION All rights reserved.
+* This software is licensed under the terms of the GNU General Public
+* License version 2, as published by FSF, and
+* may be copied, distributed, and modified under those terms.
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+* This code is based on rpc_hsub.h
+* The original copyright and notice are described below.
+*/
 /* linux/include/mach/rpc_hsusb.h
  *
  * Copyright (c) 2008-2009, Code Aurora Forum. All rights reserved.
@@ -25,6 +38,8 @@
 #include <mach/msm_otg.h>
 #include <mach/msm_hsusb.h>
 
+#define CABLE_DET_USB_DRV 0x0000
+
 #if defined(CONFIG_MSM_ONCRPCROUTER) && !defined(CONFIG_ARCH_MSM8X60)
 int msm_hsusb_rpc_connect(void);
 int msm_hsusb_phy_reset(void);
@@ -51,6 +66,12 @@ void hsusb_chg_vbus_draw(unsigned mA);
 void hsusb_chg_connected(enum chg_type chgtype);
 #endif
 
+int hsusb_cable_det_notifi_initialize_complete(uint32_t drv);
+int hsusb_cable_det_notifi_disconnect(void);
+int hsusb_cable_det_notifi_suspend(uint32_t drv);
+int hsusb_cable_det_notifi_resume(uint32_t drv);
+int hsusb_cable_usb_vdd_off(void);
+int hsusb_cable_det_notifi_earphone_status(int status);
 
 int msm_fsusb_rpc_init(struct msm_otg_ops *ops);
 int msm_fsusb_init_phy(void);
@@ -87,6 +108,13 @@ static inline int hsusb_chg_init(int connect) { return 0; }
 static inline void hsusb_chg_vbus_draw(unsigned mA) { }
 static inline void hsusb_chg_connected(enum chg_type chgtype) { }
 #endif
+
+static inline int hsusb_cable_det_notifi_initialize_complete(uint32_t drv) { return 0; }
+static inline int hsusb_cable_det_notifi_disconnect(void) { return 0; }
+static inline int hsusb_cable_det_notifi_suspend(uint32_t drv) { return 0; }
+static inline int hsusb_cable_det_notifi_resume(uint32_t drv) { return 0; }
+static inline int hsusb_cable_usb_vdd_off(void) { return 0; }
+static inline int hsusb_cable_det_notifi_earphone_status(int status) { return 0; }
 
 static inline int msm_fsusb_rpc_init(struct msm_otg_ops *ops) { return 0; }
 static inline int msm_fsusb_init_phy(void) { return 0; }

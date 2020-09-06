@@ -1,3 +1,21 @@
+/*
+ * Certain software is contributed or developed by TOSHIBA CORPORATION.
+ *
+ * Copyright (C) 2010 TOSHIBA CORPORATION All rights reserved.
+ *
+ * This software is licensed under the terms of the GNU General Public
+ * License version 2, as published by FSF, and
+ * may be copied, distributed, and modified under those terms.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * This code is based on msm_camera.c.
+ * The original copyright and notice are described below.
+ */
+
 /* Copyright (c) 2009, Code Aurora Forum. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
@@ -2452,6 +2470,16 @@ static int msm_sync_init(struct msm_sync *sync,
 	msm_queue_init(&sync->frame_q, "frame");
 	msm_queue_init(&sync->pict_q, "pict");
 
+/* TG03: 2010.09.09 Add <S> */
+#ifdef  CONFIG_TG03_CAMERA
+	wake_lock_init(&sync->wake_lock, WAKE_LOCK_SUSPEND, "msm_camera");
+
+	rc = sensor_probe(sync->sdata, &sctrl);
+	if (rc >= 0) {
+		sync->pdev = pdev;
+		sync->sctrl = sctrl;
+	}
+#else
 	wake_lock_init(&sync->wake_lock, WAKE_LOCK_IDLE, "msm_camera");
 
 	rc = msm_camio_probe_on(pdev);
@@ -2463,6 +2491,8 @@ static int msm_sync_init(struct msm_sync *sync,
 		sync->sctrl = sctrl;
 	}
 	msm_camio_probe_off(pdev);
+#endif
+/* TG03: 2010.09.09 Add <E> */
 	if (rc < 0) {
 		pr_err("%s: failed to initialize %s\n",
 			__func__,

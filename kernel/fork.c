@@ -74,6 +74,16 @@
 
 #include <trace/events/sched.h>
 
+
+struct linux_binfmt *tmp_binfmt;
+struct mm_struct *tmp_mm;
+void __init exit_init(void)
+{
+	tmp_mm = NULL;
+	tmp_binfmt = NULL;
+}
+
+
 /*
  * Protected counters by write_lock_irq(&tasklist_lock)
  */

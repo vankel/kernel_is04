@@ -1,3 +1,20 @@
+/*
+ * Certain software is contributed or developed by TOSHIBA CORPORATION.
+ *
+ * Copyright (C) 2010 TOSHIBA CORPORATION All rights reserved.
+ *
+ * This software is licensed under the terms of the GNU General Public
+ * License version 2, as published by FSF, and
+ * may be copied, distributed, and modified under those terms.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * This code is based on ehci-msm.c.
+ * The original copyright and notice are described below.
+ */
 /* ehci-msm.c - HSUSB Host Controller Driver Implementation
  *
  * Copyright (c) 2008-2010, Code Aurora Forum. All rights reserved.
@@ -40,6 +57,8 @@
 #include <mach/msm72k_otg.h>
 
 #define MSM_USB_BASE (hcd->regs)
+
+extern int hsusb_cable_det_notifi_disconnect(void);	/* USB_FROYO	*/
 
 struct msmusb_hcd {
 	struct ehci_hcd ehci;
@@ -143,6 +162,8 @@ static int usb_wakeup_phy(struct usb_hcd *hcd)
 	struct msm_usb_host_platform_data *pdata = mhcd->pdata;
 	int ret = -ENODEV;
 
+//debug log
+pr_info("[host/ehci-msm.c] %s()\n", __func__);
 	switch (PHY_TYPE(pdata->phy_info)) {
 	case USB_PHY_INTEGRATED:
 		break;
@@ -163,6 +184,8 @@ static int usb_suspend_phy(struct usb_hcd *hcd)
 	struct msmusb_hcd *mhcd = hcd_to_mhcd(hcd);
 	struct msm_usb_host_platform_data *pdata = mhcd->pdata;
 
+//debug log
+pr_info("[host/ehci-msm.c] %s()\n", __func__);
 	switch (PHY_TYPE(pdata->phy_info)) {
 	case USB_PHY_INTEGRATED:
 		break;
@@ -186,6 +209,8 @@ static int usb_lpm_enter(struct usb_hcd *hcd)
 							platform_data);
 	struct msmusb_hcd *mhcd = hcd_to_mhcd(hcd);
 
+//debug log
+pr_info("[host/ehci-msm.c] %s()\n", __func__);
 	disable_irq(hcd->irq);
 	if (mhcd->in_lpm) {
 		pr_info("%s: already in lpm. nothing to do\n", __func__);
@@ -277,6 +302,8 @@ static int ehci_msm_bus_suspend(struct usb_hcd *hcd)
 {
 	int ret;
 	struct msmusb_hcd *mhcd = hcd_to_mhcd(hcd);
+//debug log
+pr_info("[host/ehci-msm.c] %s()\n", __func__);
 
 	ret = ehci_bus_suspend(hcd);
 	if (ret) {
@@ -295,6 +322,8 @@ static int ehci_msm_bus_suspend(struct usb_hcd *hcd)
 static int ehci_msm_bus_resume(struct usb_hcd *hcd)
 {
 	struct msmusb_hcd *mhcd = hcd_to_mhcd(hcd);
+//debug log
+pr_info("[host/ehci-msm.c] %s()\n", __func__);
 
 	wake_lock(&mhcd->wlock);
 
@@ -358,6 +387,8 @@ static int ehci_msm_run(struct usb_hcd *hcd)
 	u32             hcc_params;
 	struct msm_usb_host_platform_data *pdata = mhcd->pdata;
 
+//debug log
+pr_info("[host/ehci-msm.c] %s()\n", __func__);
 	hcd->uses_new_polling = 1;
 	hcd->poll_rh = 0;
 
@@ -438,6 +469,8 @@ static void msm_hsusb_request_host(void *handle, int request)
 	struct msm_usb_host_platform_data *pdata = mhcd->pdata;
 	struct msm_otg *otg = container_of(mhcd->xceiv, struct msm_otg, otg);
 
+//debug log
+pr_info("[host/ehci-msm.c] %s()\n", __func__);
 	switch (request) {
 	case REQUEST_RESUME:
 		usb_hcd_resume_root_hub(hcd);
@@ -482,6 +515,7 @@ static void msm_hsusb_request_host(void *handle, int request)
 		if (PHY_TYPE(pdata->phy_info) == USB_PHY_INTEGRATED) {
 			otg->reset(mhcd->xceiv);
 			otg_set_suspend(mhcd->xceiv, 1);
+			hsusb_cable_det_notifi_disconnect();	/* USB_FROYO	*/
 		}
 		break;
 	}
@@ -491,6 +525,8 @@ static void msm_hsusb_otg_work(struct work_struct *work)
 {
 	struct msmusb_hcd *mhcd;
 
+//debug log
+pr_info("[host/ehci-msm.c] %s()\n", __func__);
 	mhcd = container_of(work, struct msmusb_hcd, otg_work);
 	msm_hsusb_request_host((void *)mhcd, mhcd->flags);
 }
@@ -499,6 +535,8 @@ static void msm_hsusb_start_host(struct usb_bus *bus, int start)
 	struct usb_hcd *hcd = bus_to_hcd(bus);
 	struct msmusb_hcd *mhcd = hcd_to_mhcd(hcd);
 
+//debug log
+pr_info("[host/ehci-msm.c] %s()\n", __func__);
 	mhcd->flags = start ? REQUEST_START : REQUEST_STOP;
 	schedule_work(&mhcd->otg_work);
 }
@@ -619,6 +657,8 @@ static int __init ehci_msm_probe(struct platform_device *pdev)
 	struct msm_usb_host_platform_data *pdata;
 	int retval;
 	struct msmusb_hcd *mhcd;
+//debug log
+pr_info("[host/ehci-msm.c] %s()\n", __func__);
 
 	hcd = usb_create_hcd(&msm_hc_driver, &pdev->dev, dev_name(&pdev->dev));
 	if (!hcd)
@@ -667,6 +707,9 @@ static int __init ehci_msm_probe(struct platform_device *pdev)
 				(char *) dev_name(&pdev->dev));
 	}
 
+//debug log
+pr_info("[host/ehci-msm.c] bus_suspend=0x%x in %s()\n", msm_hc_driver.bus_suspend, __func__);
+pr_info("[host/ehci-msm.c] bus_resume=0x%x in %s()\n", msm_hc_driver.bus_resume, __func__);
 	return retval;
 }
 

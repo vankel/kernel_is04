@@ -1,4 +1,22 @@
 /*
+ * Certain software is contributed or developed by 
+ * FUJITSU TOSHIBA MOBILE COMMUNICATIONS LIMITED.
+ *
+ * COPYRIGHT(C) FUJITSU TOSHIBA MOBILE COMMUNICATIONS LIMITED 2011
+ *
+ * This software is licensed under the terms of the GNU General Public
+ * License version 2, as published by FSF, and
+ * may be copied, distributed, and modified under those terms.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * This code is based on core.c.
+ * The original copyright and notice are described below.
+ */
+/*
  *  linux/drivers/mmc/core/core.c
  *
  *  Copyright (C) 2003-2004 Russell King, All Rights Reserved.
@@ -1358,6 +1376,9 @@ int mmc_resume_host(struct mmc_host *host)
 	 * We add a slight delay here so that resume can progress
 	 * in parallel.
 	 */
+#if 1 /* ATHENV */
+	if (!host->card || host->card->type != MMC_TYPE_SDIO) 
+#endif /* ATHENV */
 	mmc_detect_change(host, 1);
 
 	return err;

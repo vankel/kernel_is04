@@ -1,3 +1,21 @@
+/*
+ * Certain software is contributed or developed by TOSHIBA CORPORATION.
+ *
+ * Copyright (C) 2010 TOSHIBA CORPORATION All rights reserved.
+ *
+ * This software is licensed under the terms of the GNU General Public
+ * License version 2, as published by FSF, and
+ * may be copied, distributed, and modified under those terms.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * This code is based on msm_camera.h.
+ * The original copyright and notice are described below.
+ */
+
 /* Copyright (c) 2009, Code Aurora Forum. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
@@ -30,6 +48,10 @@
 #else
 #include <linux/time.h>
 #endif
+
+/* TG03: 2010.06.22 Add <S> */
+#define CONFIG_TG03_CAMERA
+/* TG03: 2010.06.22 Add <E> */
 
 #define MSM_CAM_IOCTL_MAGIC 'm'
 
@@ -391,7 +413,16 @@ struct msm_snapshot_pp_status {
 #define CFG_GET_AF_MAX_STEPS		26
 #define CFG_GET_PICT_MAX_EXP_LC		27
 #define CFG_SEND_WB_INFO    28
+/* TG03: 2010.06.22 Add <S> */
+#ifdef  CONFIG_TG03_CAMERA
+#define CFG_SET_LED         29
+#define CFG_COMMAND         30
+#define CFG_GET_TEMP        31
+#define CFG_MAX             32
+#else
 #define CFG_MAX 			29
+#endif
+/* TG03: 2010.06.22 Add <E> */
 
 #define MOVE_NEAR	0
 #define MOVE_FAR	1
@@ -440,6 +471,28 @@ struct wb_info_cfg {
 	uint16_t green_gain;
 	uint16_t blue_gain;
 };
+
+/* TG03: 2010.06.22 Add <S> */
+#ifdef  CONFIG_TG03_CAMERA
+
+#define LED_OFF     0
+#define LED_LOW     1
+#define LED_HIGH    2
+
+struct cfg_dl {
+    int32_t len[4];
+    uint8_t *dt[4];
+};
+
+struct cfg_cmd_ctrl {
+    uint16_t    txlen;
+    uint8_t     tx[16];
+    uint16_t    rxlen;
+    uint8_t     rx[64];
+};
+#endif
+/* TG03: 2010.06.22 Add <E> */
+
 struct sensor_cfg_data {
 	int cfgtype;
 	int mode;
@@ -460,6 +513,14 @@ struct sensor_cfg_data {
 		struct focus_cfg focus;
 		struct fps_cfg fps;
 		struct wb_info_cfg wb_info;
+/* TG03: 2010.06.22 Add <S> */
+#ifdef  CONFIG_TG03_CAMERA
+		int led;
+		struct cfg_dl dl;
+		struct cfg_cmd_ctrl cmd;
+		uint32_t temp;
+#endif
+/* TG03: 2010.06.22 Add <E> */
 	} cfg;
 };
 

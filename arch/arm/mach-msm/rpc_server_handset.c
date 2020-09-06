@@ -1,3 +1,21 @@
+/*
+ * Certain software is contributed or developed by 
+ * FUJITSU TOSHIBA MOBILE COMMUNICATIONS LIMITED.
+ *
+ * COPYRIGHT(C) FUJITSU TOSHIBA MOBILE COMMUNICATIONS LIMITED 2011
+ *
+ * This software is licensed under the terms of the GNU General Public
+ * License version 2, as published by FSF, and
+ * may be copied, distributed, and modified under those terms.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * This code is based on rpc_server_handset.c.
+ * The original copyright and notice are described below.
+ */
 /* arch/arm/mach-msm/rpc_server_handset.c
  *
  * Copyright (c) 2008-2010, Code Aurora Forum. All rights reserved.
@@ -29,6 +47,10 @@
 
 #define DRIVER_NAME	"msm-handset"
 
+
+
+
+
 #define HS_SERVER_PROG 0x30000062
 #define HS_SERVER_VERS 0x00010001
 
@@ -50,8 +72,22 @@
 #define HS_HEADSET_SWITCH_K	0x84
 #define HS_HEADSET_SWITCH_2_K	0xF0
 #define HS_HEADSET_SWITCH_3_K	0xF1
+#define HS_BACK_K		0xC0	/* Back key */
+#define HS_MENU_K		0x5B	/* Menu key */
+#define HS_HOME_K		0xC1	/* Home key */
 #define HS_REL_K		0xFF	/* key release */
 
+#define CHG_ST_NTFY_CODE        0xE0    /* battery abnormal charge event */
+
+#define HS_KEY_CHG_ST_NONE         0x155
+#define HS_KEY_CHG_ST_OVP          0x156
+#define HS_KEY_CHG_ST_OVC          0x157
+#define HS_KEY_CHG_ST_OVD          0x158
+#define HS_KEY_CHG_ST_EXP          0x159
+
+/* USB_FROYO+ s */
+#define USB_CABLE_DET   0xD0
+/* USB_FROYO+ e */
 #define KEY(hs_key, input_key) ((hs_key << 24) | input_key)
 
 enum hs_event {
@@ -126,6 +162,35 @@ enum hs_cmd_class {
 	HS_CMD_CLASS_MAX
 };
 
+enum battery_abnormal_events {
+        K_CHG_ST_NONE = 0,
+        K_CHG_ST_OVP,
+        K_CHG_ST_OVC,
+        K_CHG_ST_OVD,
+        K_CHG_ST_EXP
+};
+
+
+/* USB_FROYO+ s */
+enum {
+	USB_NOTINITIALIZE = 0,
+	USB_CLIENTINITIALIZE,
+	USB_HOSTINITIALIZE,
+};
+
+enum cable_det_param {
+	K_CABLE_WAKEUP = 0,             /* aARM Wake Up */
+	K_CABLE_USB_OTG_INIT_PHY = 1,   /*USB initialization demand*/
+	K_CABLE_USB_DISCONNECT = 3,     /*The notice of USB cable cutting*/
+	K_CABLE_USB_CONNECT_CLIENT = 4, /*The notice of USB client cable connection*/
+	K_CABLE_USB_CONNECT_HOST = 5    /*The notice of USB host cable connection*/
+        /* And mode ... */
+};
+
+extern void msm_usb_phy_reg_init(void);
+extern void msm_otg_enable_irq(void);
+extern void msm_otg_disable_irq(void);
+/* USB_FROYO+ e */
 /*
  * Receive events or send command
  */
@@ -185,6 +250,14 @@ static const uint32_t hs_key_map[] = {
 	KEY(HS_HEADSET_SWITCH_K, KEY_MEDIA),
 	KEY(HS_HEADSET_SWITCH_2_K, KEY_VOLUMEUP),
 	KEY(HS_HEADSET_SWITCH_3_K, KEY_VOLUMEDOWN),
+	KEY(HS_BACK_K, KEY_BACK),
+	KEY(HS_MENU_K, KEY_MENU),
+	KEY(HS_HOME_K, KEY_HOME),
+	KEY(HS_KEY_CHG_ST_NONE, KEY_CHG_ST_NONE),
+	KEY(HS_KEY_CHG_ST_OVP, KEY_CHG_ST_OVP),
+	KEY(HS_KEY_CHG_ST_OVC, KEY_CHG_ST_OVC),
+	KEY(HS_KEY_CHG_ST_OVD, KEY_CHG_ST_OVD),
+	KEY(HS_KEY_CHG_ST_EXP, KEY_CHG_ST_EXP),
 	0
 };
 
@@ -255,6 +328,67 @@ static void report_hs_key(uint32_t key_code, uint32_t key_parm)
 {
 	int key, temp_key_code;
 
+	printk("<1>KeyCode = %x\n", key_code);
+
+
+
+
+
+    	if (key_code == CHG_ST_NTFY_CODE)
+    	{
+            printk("got CHG_ST_NTFY_CODE notification\n");
+            switch(key_parm)
+            {
+                    case K_CHG_ST_NONE:
+                            key = KEY_CHG_ST_NONE;
+                            break;
+                    case K_CHG_ST_OVP:
+                            key = KEY_CHG_ST_OVP;
+                            break;
+                    case K_CHG_ST_OVC:
+                            key = KEY_CHG_ST_OVC;
+                            break;
+                    case K_CHG_ST_OVD:
+                            key = KEY_CHG_ST_OVD;
+                            break;
+                    case K_CHG_ST_EXP:
+                            key = KEY_CHG_ST_EXP;
+                            break;
+            }
+            printk(" key_code = %d, key_parm = %d\n", key_code, key_parm);
+            input_report_key(hs->ipdev, key, (key_code != HS_REL_K));
+	}
+/* USB_FROYO+ s */
+    if (key_code == USB_CABLE_DET) {
+        switch(key_parm) {
+        case K_CABLE_WAKEUP:
+            printk(KERN_INFO "%s: cable_det debug. call wakeup (%d)\n", __func__, key_parm);
+            /* call wakeup function */
+            break;
+        case K_CABLE_USB_OTG_INIT_PHY:
+            printk(KERN_INFO "%s: cable_det debug. USB utilization demand (%d)\n", __func__, key_parm);
+            msm_usb_phy_reg_init();
+            break;
+        case K_CABLE_USB_DISCONNECT:
+            printk(KERN_INFO "%s: cable_det debug. USB cable cutting (%d) \n",__func__,key_parm);
+            msm_otg_disable_irq();
+            break;
+        case K_CABLE_USB_CONNECT_CLIENT:
+            printk(KERN_INFO "%s: cable_det debug. USB connect client (%d) \n",__func__,key_parm);
+            msm_otg_enable_irq();
+            break;
+        case K_CABLE_USB_CONNECT_HOST:
+            msm_otg_enable_irq();
+            printk(KERN_INFO "%s: cable_det debug. USB connect host (%d) \n",__func__,key_parm);
+            break;
+        default:
+            /* error !! */
+            break;
+        }
+    return;
+    }
+/* USB_FROYO+ e */
+
 	if (key_code == HS_REL_K)
 		key = hs_find_key(key_parm);
 	else
@@ -271,6 +405,9 @@ static void report_hs_key(uint32_t key_code, uint32_t key_parm)
 	case KEY_MEDIA:
 	case KEY_VOLUMEUP:
 	case KEY_VOLUMEDOWN:
+	case KEY_BACK:
+	case KEY_MENU:
+	case KEY_HOME:
 		input_report_key(hs->ipdev, key, (key_code != HS_REL_K));
 		break;
 	case SW_HEADPHONE_INSERT:
@@ -610,7 +747,15 @@ static int __devinit hs_probe(struct platform_device *pdev)
 	input_set_capability(ipdev, EV_SW, SW_HEADPHONE_INSERT);
 	input_set_capability(ipdev, EV_KEY, KEY_POWER);
 	input_set_capability(ipdev, EV_KEY, KEY_END);
+	input_set_capability(ipdev, EV_KEY, KEY_CHG_ST_NONE);
+	input_set_capability(ipdev, EV_KEY, KEY_CHG_ST_OVP);
+ 	input_set_capability(ipdev, EV_KEY, KEY_CHG_ST_OVC);
+   	input_set_capability(ipdev, EV_KEY, KEY_CHG_ST_OVD);
+   	input_set_capability(ipdev, EV_KEY, KEY_CHG_ST_EXP);
 
+	input_set_capability(ipdev, EV_KEY, KEY_BACK);
+	input_set_capability(ipdev, EV_KEY, KEY_MENU);
+	input_set_capability(ipdev, EV_KEY, KEY_HOME);
 	rc = input_register_device(ipdev);
 	if (rc) {
 		dev_err(&ipdev->dev,

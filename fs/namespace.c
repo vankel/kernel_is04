@@ -1,4 +1,22 @@
 /*
+ * Certain software is contributed or developed by 
+ * FUJITSU TOSHIBA MOBILE COMMUNICATIONS LIMITED.
+ *
+ * COPYRIGHT(C) FUJITSU TOSHIBA MOBILE COMMUNICATIONS LIMITED 2011
+ *
+ * This software is licensed under the terms of the GNU General Public
+ * License version 2, as published by FSF, and
+ * may be copied, distributed, and modified under those terms.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * This code is based on namespace.c.
+ * The original copyright and notice are described below.
+ */
+/*
  *  linux/fs/namespace.c
  *
  * (C) Copyright Al Viro 2000, 2001
@@ -7,6 +25,9 @@
  * Based on code from fs/super.c, copyright Linus Torvalds and others.
  * Heavily rewritten.
  */
+/*----------------------------------------------------------------------------*/
+// COPYRIGHT(C) FUJITSU TOSHIBA MOBILE COMMUNICATIONS LIMITED 2011
+/*----------------------------------------------------------------------------*/
 
 #include <linux/syscalls.h>
 #include <linux/slab.h>
@@ -36,6 +57,8 @@
 
 #define HASH_SHIFT ilog2(PAGE_SIZE / sizeof(struct list_head))
 #define HASH_SIZE (1UL << HASH_SHIFT)
+
+#define __PATH_MAX 255 
 
 /* spinlock for vfsmount related operations, inplace of dcache_lock */
 __cacheline_aligned_in_smp DEFINE_SPINLOCK(vfsmount_lock);
@@ -1029,6 +1052,18 @@ static int do_umount(struct vfsmount *mnt, int flags)
 	int retval;
 	LIST_HEAD(umount_list);
 
+
+	{
+		char top[__PATH_MAX+1] = "";
+
+		strncpy(top, mnt->mnt_mountpoint->d_name.name, __PATH_MAX);
+		if (!strcmp(top, "system")) {
+			printk("umount of system is not permitted\n");
+			return -EPERM;
+		}
+	}
+
+
 	retval = security_sb_umount(mnt, flags);
 	if (retval)
 		return retval;
@@ -1949,6 +1984,23 @@ long do_mount(char *dev_name, char *dir_name, char *type_page,
 	retval = kern_path(dir_name, LOOKUP_FOLLOW, &path);
 	if (retval)
 		return retval;
+
+
+	{
+		char top[__PATH_MAX+1] = "";
+
+		strncpy(top, path.mnt->mnt_mountpoint->d_name.name, __PATH_MAX);
+		if (!strcmp(top, "system")) {
+			if ((flags & MS_REMOUNT) && !(flags & MS_RDONLY)) {
+				printk("remount of system as rw is not permitted\n");
+				return -EPERM;
+			} else if (strcmp(dev_name, "/dev/block/mtdblock1")) {
+				printk("invalid mount to system\n");
+				return -EPERM;
+			}
+		}
+	}
+
 
 	retval = security_sb_mount(dev_name, &path,
 				   type_page, flags, data_page);

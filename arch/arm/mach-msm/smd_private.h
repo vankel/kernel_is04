@@ -1,3 +1,21 @@
+/*
+ * Certain software is contributed or developed by 
+ * FUJITSU TOSHIBA MOBILE COMMUNICATIONS LIMITED.
+ *
+ * COPYRIGHT(C) FUJITSU TOSHIBA MOBILE COMMUNICATIONS LIMITED 2011
+ *
+ * This software is licensed under the terms of the GNU General Public
+ * License version 2, as published by FSF, and
+ * may be copied, distributed, and modified under those terms.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * This code is based on smd_private.h.
+ * The original copyright and notice are described below.
+ */
 /* arch/arm/mach-msm/smd_private.h
  *
  * Copyright (C) 2007 Google, Inc.
@@ -254,9 +272,45 @@ enum {
 	SMEM_SMDLITE_TABLE,
 	SMEM_SD_IMG_UPGRADE_STATUS,
 	SMEM_SEFS_INFO,
-	SMEM_RESET_LOG,
-	SMEM_RESET_LOG_SYMBOLS,
-	SMEM_MEM_LAST = SMEM_RESET_LOG_SYMBOLS,
+  SMEM_RESET_LOG,
+  SMEM_RESET_LOG_SYMBOLS,
+  SMEM_MODEM_SW_BUILD_ID,
+  SMEM_SMEM_LOG_MPROC_WRAP,
+  SMEM_BOOT_INFO_FOR_APPS,
+
+  SMEM_OEM_001 = SMEM_BOOT_INFO_FOR_APPS,
+  SMEM_OEM_002,
+  SMEM_OEM_003,
+  SMEM_OEM_004,
+  SMEM_OEM_005,
+  SMEM_OEM_006,
+  SMEM_OEM_007,
+  SMEM_OEM_008,
+  SMEM_OEM_009,
+  SMEM_OEM_010,
+  
+  SMEM_OEM_011,
+  SMEM_OEM_012,
+  SMEM_OEM_013,
+  SMEM_OEM_014,
+  SMEM_OEM_015,
+  SMEM_OEM_016,
+  SMEM_OEM_01601,
+  SMEM_OEM_017,
+  SMEM_OEM_018,
+  SMEM_OEM_019,
+  SMEM_OEM_020,
+  SMEM_OEM_021,
+  SMEM_OEM_022,
+  SMEM_OEM_023,
+  SMEM_OEM_024,
+  SMEM_OEM_025,
+  SMEM_OEM_026,
+  SMEM_OEM_027,
+  SMEM_OEM_028,
+/* ----------------------------------------------------------------------- */
+
+	SMEM_MEM_LAST = SMEM_OEM_028,
 	SMEM_NUM_ITEMS,
 };
 

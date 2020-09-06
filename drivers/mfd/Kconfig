@@ -91,6 +91,14 @@ config TPS65023
         help
           Say yes here for Qualcomm QSD chips. The TI PMIC is used by the
           QSD8x50 series of chips for power management.
+	  
+config MAX8649
+	tristate "MAX8649 Power Management chip"
+	depends on I2C && ARCH_MSM_SCORPION
+	default y if I2C && ARCH_MSM_SCORPION
+	help
+	  Say yes here for QSD scorpion chips. The MAX8649 PMIC is used by the
+	  QSD8x50 series of chips for power management.
 
 config PMIC8058
 	tristate "PMIC8058 Power Management chip"

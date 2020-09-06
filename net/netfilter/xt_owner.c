@@ -1,4 +1,22 @@
 /*
+ * Certain software is contributed or developed by 
+ * FUJITSU TOSHIBA MOBILE COMMUNICATIONS LIMITED.
+ *
+ * COPYRIGHT(C) FUJITSU TOSHIBA MOBILE COMMUNICATIONS LIMITED 2011
+ *
+ * This software is licensed under the terms of the GNU General Public
+ * License version 2, as published by FSF, and
+ * may be copied, distributed, and modified under those terms.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * This code is based on xt_owner.c.
+ * The original copyright and notice are described below.
+ */
+/*
  * Kernel module to match various things tied to sockets associated with
  * locally generated outgoing packets.
  *
@@ -16,6 +34,9 @@
 #include <net/sock.h>
 #include <linux/netfilter/x_tables.h>
 #include <linux/netfilter/xt_owner.h>
+
+#include <linux/netfilter_ipv4/ipt_owner.h>
+
 
 static bool
 owner_mt(const struct sk_buff *skb, const struct xt_match_param *par)
@@ -52,7 +73,63 @@ owner_mt(const struct sk_buff *skb, const struct xt_match_param *par)
 	return true;
 }
 
-static struct xt_match owner_mt_reg __read_mostly = {
+
+static bool
+owner_mt_v0(const struct sk_buff *skb, const struct xt_match_param *par)
+{
+	const struct ipt_owner_info *info = par->matchinfo;
+	const struct file *filp;
+
+	if (skb->sk == NULL || skb->sk->sk_socket == NULL)
+		return false;
+
+	filp = skb->sk->sk_socket->file;
+	if (filp == NULL)
+		return false;
+
+	if (info->match & IPT_OWNER_UID)
+		if ((filp->f_cred->fsuid != info->uid) ^
+		    !!(info->invert & IPT_OWNER_UID))
+			return false;
+
+	if (info->match & IPT_OWNER_GID)
+		if ((filp->f_cred->fsgid != info->gid) ^
+		    !!(info->invert & IPT_OWNER_GID))
+			return false;
+
+	return true;
+}
+
+static bool owner_mt_check_v0(const struct xt_mtchk_param *par)
+{
+	const struct ipt_owner_info *info = par->matchinfo;
+
+printk("owner_mt_check_v0 : start");
+
+	if (info->match & (IPT_OWNER_PID | IPT_OWNER_SID | IPT_OWNER_COMM)) {
+		printk(KERN_WARNING KBUILD_MODNAME
+		       ": PID, SID and command matching is not "
+		       "supported anymore\n");
+		return false;
+	}
+
+	return true;
+}
+
+
+static struct xt_match owner_mt_reg[] __read_mostly = {
+	{
+		.name       = "owner",
+		.revision   = 0,
+		.family     = NFPROTO_IPV4,
+		.match      = owner_mt_v0,
+		.matchsize  = sizeof(struct ipt_owner_info),
+		.checkentry = owner_mt_check_v0,
+		.hooks      = (1 << NF_INET_LOCAL_OUT) |
+		              (1 << NF_INET_POST_ROUTING),
+		.me         = THIS_MODULE,
+	},
+	{
 	.name       = "owner",
 	.revision   = 1,
 	.family     = NFPROTO_UNSPEC,
@@ -61,6 +138,7 @@ static struct xt_match owner_mt_reg __read_mostly = {
 	.hooks      = (1 << NF_INET_LOCAL_OUT) |
 	              (1 << NF_INET_POST_ROUTING),
 	.me         = THIS_MODULE,
+	},
 };
 
 static int __init owner_mt_init(void)

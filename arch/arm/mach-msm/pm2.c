@@ -1,3 +1,22 @@
+/*
+ * Certain software is contributed or developed by 
+ * FUJITSU TOSHIBA MOBILE COMMUNICATIONS LIMITED.
+ *
+ * COPYRIGHT(C) FUJITSU TOSHIBA MOBILE COMMUNICATIONS LIMITED 2011
+ *
+ * This software is licensed under the terms of the GNU General Public
+ * License version 2, as published by FSF, and
+ * may be copied, distributed, and modified under those terms.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * This code is based on pm2.c.
+ * The original copyright and notice are described below.
+ */
+
 /* arch/arm/mach-msm/pm2.c
  *
  * MSM Power Management Routines
@@ -66,7 +85,7 @@ enum {
 	MSM_PM_DEBUG_IDLE = 1U << 6,
 };
 
-static int msm_pm_debug_mask;
+static int msm_pm_debug_mask = MSM_PM_DEBUG_SUSPEND;
 module_param_named(
 	debug_mask, msm_pm_debug_mask, int, S_IRUGO | S_IWUSR | S_IWGRP
 );
@@ -1677,6 +1696,7 @@ static uint32_t restart_reason = 0x776655AA;
 
 static void msm_pm_power_off(void)
 {
+	smsm_change_state(SMSM_APPS_STATE,DEM_SLAVE_SMSM_RUN,SMSM_SYSTEM_POWER_DOWN);
 	msm_rpcrouter_close();
 	msm_proc_comm(PCOM_POWER_DOWN, 0, 0);
 	for (;;)
@@ -1685,6 +1705,7 @@ static void msm_pm_power_off(void)
 
 static void msm_pm_restart(char str, const char *cmd)
 {
+	smsm_change_state(SMSM_APPS_STATE,DEM_SLAVE_SMSM_RUN,SMSM_SYSTEM_REBOOT);
 	msm_rpcrouter_close();
 	msm_proc_comm(PCOM_RESET_CHIP, &restart_reason, 0);
 

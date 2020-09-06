@@ -15,6 +15,9 @@
  * 02110-1301, USA.
  *
  */
+/*----------------------------------------------------------------------------*/
+// COPYRIGHT(C) FUJITSU LIMITED 2011
+/*----------------------------------------------------------------------------*/
 
 #include <linux/module.h>
 #include <linux/kernel.h>
@@ -383,7 +386,8 @@ boolean mddi_host_register_write_int
 
 void mddi_wait(uint16 time_ms)
 {
-	mdelay(time_ms);
+/*	mdelay(time_ms);*/	/* FUJITSU:2011-03-18 removed */
+	msleep(time_ms);	/* FUJITSU:2011-03-18 added */
 }
 
 void mddi_client_lcd_vsync_detected(boolean detected)

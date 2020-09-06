@@ -56,6 +56,10 @@
 #include <asm/mmu_context.h>
 #include "cred-internals.h"
 
+
+#include <linux/namei.h>
+
+
 static void exit_mm(struct task_struct * tsk);
 
 static void __unhash_process(struct task_struct *p)
@@ -162,10 +166,23 @@ static void delayed_put_task_struct(struct rcu_head *rhp)
 }
 
 
+extern int sphinx_elf_unregister_process(pid_t pid);
+
+
+
+extern 	struct linux_binfmt *tmp_binfmt;
+extern 	struct mm_struct *tmp_mm;
+
+
 void release_task(struct task_struct * p)
 {
 	struct task_struct *leader;
 	int zap_leader;
+
+
+	int do_flg;
+
+
 repeat:
 	tracehook_prepare_release_task(p);
 	/* don't need to get the RCU readlock here - the process is dead and
@@ -205,6 +222,36 @@ repeat:
 		if (zap_leader)
 			leader->exit_state = EXIT_DEAD;
 	}
+
+
+#define FEATURE_KDDIOEM_DIGESTMANAGER
+#ifdef FEATURE_KDDIOEM_DIGESTMANAGER
+	do_flg = false;
+	if (p->mm == NULL && tmp_mm == NULL) {
+	} else {
+		if (p->mm != NULL && tmp_mm == NULL) {
+			if (leader == p && thread_group_empty(leader) && p->mm->binfmt != NULL) {
+				do_flg = true;
+			}
+		} else if (p->mm == NULL && tmp_mm != NULL) {
+			if (leader == p && thread_group_empty(leader) && tmp_binfmt != NULL) {
+				do_flg = true;
+			}
+			tmp_mm = NULL;
+		} else {
+			tmp_mm = NULL;
+		}
+		if(do_flg == true){
+			if(strcmp(p->comm, "akmd2") != 0){
+				sphinx_elf_unregister_process(p->pid);
+			} else {
+			}
+		}
+	}
+
+
+#endif /* FEATURE_KDDIOEM_DIGESTMANAGER */
+
 
 	write_unlock_irq(&tasklist_lock);
 	release_thread(p);
@@ -683,6 +730,14 @@ static void exit_mm(struct task_struct * tsk)
 	BUG_ON(mm != tsk->active_mm);
 	/* more a memory barrier than a real lock */
 	task_lock(tsk);
+
+
+	if (tsk->mm != NULL){
+		tmp_mm = tsk->mm;
+		tmp_binfmt = tsk->mm->binfmt;
+	}
+
+
 	tsk->mm = NULL;
 	up_read(&mm->mmap_sem);
 	enter_lazy_tlb(mm, current);

@@ -1,4 +1,22 @@
 /*
+ * Certain software is contributed or developed by 
+ * FUJITSU TOSHIBA MOBILE COMMUNICATIONS LIMITED.
+ *
+ * COPYRIGHT(C) FUJITSU TOSHIBA MOBILE COMMUNICATIONS LIMITED 2011
+ *
+ * This software is licensed under the terms of the GNU General Public
+ * License version 2, as published by FSF, and
+ * may be copied, distributed, and modified under those terms.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * This code is based on f_mass_storage.c.
+ * The original copyright and notice are described below.
+ */
+/*
  * drivers/usb/gadget/f_mass_storage.c
  *
  * Function Driver for USB Mass Storage
@@ -305,6 +323,7 @@ enum data_direction {
 	DATA_DIR_NONE
 };
 int can_stall = 1;
+int store_state = 0;
 static struct usb_mass_storage_platform_data *pdata;
 
 struct fsg_dev {
@@ -793,6 +812,7 @@ static int do_read(struct fsg_dev *fsg)
 	unsigned int		partial_page;
 	ssize_t			nread;
 
+	store_state = 1;	
 	/* Get the starting Logical Block Address and check that it's
 	 * not too big */
 	if (fsg->cmnd[0] == SC_READ_6)
@@ -924,11 +944,18 @@ static int do_write(struct fsg_dev *fsg)
 	int			csw_hack_sent = 0;
 	int			i;
 #endif
+	store_state = 1;	
 	if (curlun->ro) {
 		curlun->sense_data = SS_WRITE_PROTECTED;
 		return -EINVAL;
 	}
+
+#if 0
 	curlun->filp->f_flags &= ~O_SYNC;	/* Default is not to wait */
+#else
+	curlun->filp->f_flags |= O_SYNC;	
+#endif
+
 
 	/* Get the starting Logical Block Address and check that it's
 	 * not too big */
@@ -1844,8 +1871,17 @@ static int check_command(struct fsg_dev *fsg, int cmnd_size,
 
 		/* Special case workaround: MS-Windows issues REQUEST_SENSE
 		 * and INQUIRY commands with cbw->Length == 12 (it should be 6). */
+
+#if 0
 		if ((fsg->cmnd[0] == SC_REQUEST_SENSE && fsg->cmnd_size == 12)
 		 || (fsg->cmnd[0] == SC_INQUIRY && fsg->cmnd_size == 12))
+#else
+		if ((fsg->cmnd[0] == SC_REQUEST_SENSE && fsg->cmnd_size == 12)
+		 || (fsg->cmnd[0] == SC_INQUIRY && fsg->cmnd_size == 12)
+		 || (fsg->cmnd[0] == SC_TEST_UNIT_READY && fsg->cmnd_size == 12)
+		 || (fsg->cmnd[0] == SC_MODE_SENSE_10 && fsg->cmnd_size == 12))
+#endif
+
 			cmnd_size = fsg->cmnd_size;
 		else {
 			fsg->phase_error = 1;
@@ -2050,6 +2086,7 @@ static int do_scsi_command(struct fsg_dev *fsg)
 		break;
 
 	case SC_TEST_UNIT_READY:
+		store_state = 0;	
 		fsg->data_size_from_cmnd = 0;
 		reply = check_command(fsg, 6, DATA_DIR_NONE,
 				0, 1,
@@ -3040,6 +3077,14 @@ int mass_storage_function_add(struct usb_composite_dev *cdev,
 			fsg->release = pdata->release;
 		fsg->nluns = pdata->nluns;
 	}
+
+	else {
+		fsg->nluns = 1;
+		fsg->vendor = "Toshiba";
+		fsg->product = "Mass Storage";
+		fsg->release = 0xFFFF;
+	}
+
 
 	rc = usb_add_function(c, &fsg->function);
 	if (rc != 0)

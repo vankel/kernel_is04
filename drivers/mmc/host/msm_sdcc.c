@@ -1,4 +1,22 @@
 /*
+ * Certain software is contributed or developed by 
+ * FUJITSU TOSHIBA MOBILE COMMUNICATIONS LIMITED.
+ *
+ * COPYRIGHT(C) FUJITSU TOSHIBA MOBILE COMMUNICATIONS LIMITED 2011
+ *
+ * This software is licensed under the terms of the GNU General Public
+ * License version 2, as published by FSF, and
+ * may be copied, distributed, and modified under those terms.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * This code is based on msm_sdcc.c.
+ * The original copyright and notice are described below.
+ */
+/*
  *  linux/drivers/mmc/host/msm_sdcc.c - Qualcomm MSM 7X00A SDCC Driver
  *
  *  Copyright (C) 2007 Google Inc,
@@ -1275,10 +1293,30 @@ set_polling(struct device *dev, struct device_attribute *attr,
 	return count;
 }
 
+/* ATHENV +++ */
+static ssize_t
+set_detect_change(struct device *dev, struct device_attribute *attr,
+		const char *buf, size_t count)
+{
+	struct mmc_host *mmc = dev_get_drvdata(dev);
+	struct msmsdcc_host *host = mmc_priv(mmc);
+	int value;
+	if (sscanf(buf, "%d", &value)==1 && value) {
+        mmc_detect_change(host->mmc, 0);
+    }
+	return count;
+}
+static DEVICE_ATTR(detect_change, S_IRUGO | S_IWUSR,
+		NULL, set_detect_change);
+/* ATHENV --- */
+
 static DEVICE_ATTR(polling, S_IRUGO | S_IWUSR,
 		show_polling, set_polling);
 static struct attribute *dev_attrs[] = {
 	&dev_attr_polling.attr,
+/* ATHENV +++ */
+    &dev_attr_detect_change.attr,
+/* ATHENV --- */
 	NULL,
 };
 static struct attribute_group dev_attr_grp = {
@@ -1679,11 +1717,16 @@ msmsdcc_suspend(struct platform_device *dev, pm_message_t state)
 	if (mmc) {
 		if (host->plat->status_irq)
 			disable_irq(host->plat->status_irq);
+#if 0 /* ATHENV +++ avoid this otherwise wakelock will prevent system suspend*/
 		host->sdcc_suspending = 1;
-
+#endif /* ATHENV --- */
 		if (!mmc->card || (host->plat->sdiowakeup_irq &&
 				mmc->card->type == MMC_TYPE_SDIO) ||
+#if 1 /* ATHENV +++ */
+                1)
+#else
 				mmc->card->type != MMC_TYPE_SDIO)
+#endif /* ATHENV --- */
 			rc = mmc_suspend_host(mmc, state);
 		if (!rc) {
 			writel(0, host->base + MMCIMASK0);
@@ -1744,7 +1787,11 @@ msmsdcc_resume(struct platform_device *dev)
 		spin_unlock_irqrestore(&host->lock, flags);
 		if (!mmc->card || (host->plat->sdiowakeup_irq &&
 				mmc->card->type == MMC_TYPE_SDIO) ||
+#if 1 /* ATHENV +++ */
+                1)
+#else
 				mmc->card->type != MMC_TYPE_SDIO)
+#endif /* ATHENV --- */
 			mmc_resume_host(mmc);
 		if (host->plat->status_irq)
 			enable_irq(host->plat->status_irq);

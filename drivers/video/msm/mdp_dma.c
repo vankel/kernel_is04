@@ -1,3 +1,20 @@
+/*
+ * Certain software is contributed or developed by TOSHIBA CORPORATION.
+ *
+ * Copyright (C) 2010 TOSHIBA CORPORATION All rights reserved.
+ *
+ * This software is licensed under the terms of the GNU General Public
+ * License version 2, as published by FSF, and
+ * may be copied, distributed, and modified under those terms.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * This code is based on mdp_dma.c.
+ * The original copyright and notice are described below.
+ */
 /* Copyright (c) 2008-2009, Code Aurora Forum. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
@@ -15,6 +32,8 @@
  * 02110-1301, USA.
  *
  */
+
+#define MDP_DMA_VSYNC
 
 #include <linux/module.h>
 #include <linux/kernel.h>
@@ -38,6 +57,10 @@
 #include "msm_fb.h"
 #include "mddihost.h"
 
+
+/* Customize for screen of sandstorm */
+extern void tsb_mddi_lcd_firstupdate(void);
+
 static uint32 mdp_last_dma2_update_width;
 static uint32 mdp_last_dma2_update_height;
 static uint32 mdp_curr_dma2_update_width;
@@ -56,6 +79,10 @@ extern struct workqueue_struct *mdp_dma_wq;
 
 int vsync_start_y_adjust = 4;
 
+#ifdef MDP_DMA_VSYNC
+int mdp_vsync_start_cnt = 100;
+#endif
+
 static void mdp_dma2_update_lcd(struct msm_fb_data_type *mfd)
 {
 	MDPIBUF *iBuf = &mfd->ibuf;
@@ -70,11 +97,29 @@ static void mdp_dma2_update_lcd(struct msm_fb_data_type *mfd)
 	uint32 ystride = mfd->fbi->fix.line_length;
 	uint32 mddi_pkt_desc;
 
+	/* if update RAM image size is full screen size */
+	if (iBuf->dma_h == mfd->panel_info.yres)
+	{
+	tsb_mddi_lcd_firstupdate();
+	}
+
 	dma2_cfg_reg = DMA_PACK_ALIGN_LSB |
 		    DMA_OUT_SEL_AHB | DMA_IBUF_NONCONTIGUOUS;
 
 #ifdef CONFIG_FB_MSM_MDP22
 	dma2_cfg_reg |= DMA_PACK_TIGHT;
+#endif
+
+#ifdef MDP_DMA_VSYNC
+if(mdp_vsync_start_cnt != 0)
+{
+  mdp_vsync_start_cnt--;
+  if(mdp_vsync_start_cnt == 0)
+  {
+	mfd->panel_info.lcd.hw_vsync_mode = TRUE;
+	mdp_config_vsync(mfd);
+  }
+}
 #endif
 
 #ifdef CONFIG_FB_MSM_MDP30

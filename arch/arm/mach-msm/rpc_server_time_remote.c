@@ -1,3 +1,21 @@
+/*
+ * Certain software is contributed or developed by 
+ * FUJITSU TOSHIBA MOBILE COMMUNICATIONS LIMITED.
+ *
+ * COPYRIGHT(C) FUJITSU TOSHIBA MOBILE COMMUNICATIONS LIMITED 2011
+ *
+ * This software is licensed under the terms of the GNU General Public
+ * License version 2, as published by FSF, and
+ * may be copied, distributed, and modified under those terms.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * This code is based on rpc_server_time_remote.c.
+ * The original copyright and notice are described below.
+ */
 /* arch/arm/mach-msm/rpc_server_time_remote.c
  *
  * Copyright (C) 2007 Google, Inc.
@@ -21,6 +39,7 @@
 #include <mach/msm_rpcrouter.h>
 #include "rpc_server_time_remote.h"
 #include <linux/rtc.h>
+#include <linux/fs.h>
 #include <linux/android_alarm.h>
 
 /* time_remote_mtoa server definitions. */
@@ -108,6 +127,16 @@ static int handle_rpc_call(struct msm_rpc_server *server,
 
 	case RPC_TIME_TOD_SET_APPS_BASES: {
 		struct rpc_time_tod_set_apps_bases_args *args;
+
+		struct kstat temp_state;
+
+		if (vfs_stat("/data/data/com.android.settings/files"
+				"/autotime.disabled", &temp_state) == 0) {
+			printk(KERN_INFO "RPC_TIME_TOD_SET_APPS_BASES:\n"
+				"\tautotime.disabled\n");
+			return 0;
+		}
+
 		args = (struct rpc_time_tod_set_apps_bases_args *)(req + 1);
 		args->tick = be32_to_cpu(args->tick);
 		args->stamp = be64_to_cpu(args->stamp);

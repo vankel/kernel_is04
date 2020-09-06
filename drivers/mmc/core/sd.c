@@ -1,4 +1,22 @@
 /*
+ * Certain software is contributed or developed by 
+ * FUJITSU TOSHIBA MOBILE COMMUNICATIONS LIMITED.
+ *
+ * COPYRIGHT(C) FUJITSU TOSHIBA MOBILE COMMUNICATIONS LIMITED 2011
+ *
+ * This software is licensed under the terms of the GNU General Public
+ * License version 2, as published by FSF, and
+ * may be copied, distributed, and modified under those terms.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * This code is based on sd.c.
+ * The original copyright and notice are described below.
+ */
+/*
  *  linux/drivers/mmc/core/sd.c
  *
  *  Copyright (C) 2003-2004 Russell King, All Rights Reserved.
@@ -625,9 +643,7 @@ static int mmc_sd_suspend(struct mmc_host *host)
 static int mmc_sd_resume(struct mmc_host *host)
 {
 	int err;
-#ifdef CONFIG_MMC_PARANOID_SD_INIT
 	int retries;
-#endif
 
 	BUG_ON(!host);
 	BUG_ON(!host->card);
@@ -648,7 +664,22 @@ static int mmc_sd_resume(struct mmc_host *host)
 		break;
 	}
 #else
+	retries = 5;
+	while (retries) {
 	err = mmc_sd_init_card(host, host->ocr, host->card);
+
+		if (err) {
+			printk(KERN_ERR "%s: Re-init card rc = %d (retries = %d)\n",
+			       mmc_hostname(host), err, retries);
+			gpio_set_value(31, 0);      /* SDIF_VDD_ON(GPIO[31]) 'H' -> 'L'(PWR_OFF) */
+			mdelay(500);
+			gpio_set_value(31, 1);      /* SDIF_VDD_ON(GPIO[31]) 'L' -> 'H'(PWR_ON) */
+			mdelay(10);
+			retries--;
+			continue;
+		}
+		break;
+	}
 #endif
 	mmc_release_host(host);
 

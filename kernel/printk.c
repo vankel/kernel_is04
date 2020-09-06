@@ -166,6 +166,15 @@ void log_buf_kexec_setup(void)
 }
 #endif
 
+extern unsigned const printk_tbl[5] =
+{
+	0x55aa11ee,
+	(unsigned)&printk_tbl[0],
+	(unsigned)&log_buf,
+	(unsigned)&log_buf_len,
+	(unsigned)&log_end
+};
+
 static int __init log_buf_len_setup(char *str)
 {
 	unsigned size = memparse(str, &str);

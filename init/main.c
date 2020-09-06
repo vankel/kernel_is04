@@ -122,6 +122,10 @@ static char *static_command_line;
 static char *execute_command;
 static char *ramdisk_execute_command;
 
+
+extern void exit_init(void);
+
+
 #ifdef CONFIG_SMP
 /* Setup configured maximum number of CPUs to activate */
 unsigned int __initdata setup_max_cpus = NR_CPUS;
@@ -875,6 +879,10 @@ static int __init kernel_init(void * unused)
 
 	smp_init();
 	sched_init_smp();
+
+
+	exit_init();
+
 
 	do_basic_setup();
 

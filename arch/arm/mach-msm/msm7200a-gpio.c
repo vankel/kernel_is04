@@ -1,4 +1,22 @@
 /*
+ * Certain software is contributed or developed by 
+ * FUJITSU TOSHIBA MOBILE COMMUNICATIONS LIMITED.
+ *
+ * COPYRIGHT(C) FUJITSU TOSHIBA MOBILE COMMUNICATIONS LIMITED 2011
+ *
+ * This software is licensed under the terms of the GNU General Public
+ * License version 2, as published by FSF, and
+ * may be copied, distributed, and modified under those terms.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * This code is based on msm7200a-gpio.c.
+ * The original copyright and notice are described below.
+ */
+/*
  * Driver for Qualcomm MSM7200a and related SoC GPIO.
  * Supported chipset families include:
  * MSM7x01(a), MSM7x25, MSM7x27, MSM7x30, QSD8x50(a)
@@ -52,6 +70,8 @@ struct msm_gpio_dev {
 	struct msm7200a_gpio_regs	regs;
 	u32				irq_masks[NUM_IRQ_MASKS];
 	int				nsuspend;
+	unsigned        int_status_copy;
+	unsigned int    both_edge_detect;
 };
 
 #define TO_MSM_GPIO_DEV(c) container_of(c, struct msm_gpio_dev, gpio_chip)
@@ -146,6 +166,94 @@ static int gpio_chip_to_irq(struct gpio_chip *chip, unsigned offset)
 	return msm_gpio->irq_base + offset;
 }
 
+static void msm_gpio_update_both_edge_detect(struct msm_gpio_dev *msm_gpio)
+{
+	int loop_limit = 100;
+	unsigned pol, val, val2, intstat;
+    do {
+		val = readl(msm_gpio->regs.in);
+		pol = readl(msm_gpio->regs.int_pos);
+		pol = (pol & ~msm_gpio->both_edge_detect) | (~val & msm_gpio->both_edge_detect);
+		writel(pol, msm_gpio->regs.int_pos);
+		intstat = readl(msm_gpio->regs.int_status);
+		val2 = readl(msm_gpio->regs.in);
+		if (((val ^ val2) & msm_gpio->both_edge_detect & ~intstat) == 0)
+			return;
+	} while (loop_limit-- > 0);
+	printk(KERN_ERR "msm_gpio_update_both_edge_detect, failed to reach stable state %x != %x\n", val, val2);
+}
+
+
+
+static int msm_gpio_read_detect_status( struct gpio_chip *chip, unsigned offset )
+{
+    struct msm_gpio_dev *msm_gpio = TO_MSM_GPIO_DEV(chip);
+	unsigned b = bit(offset);
+    unsigned v;
+
+    v = readl(msm_gpio->regs.int_status);
+    v |= msm_gpio->int_status_copy;
+    
+    return (v & b) ? 1 : 0;
+}
+
+static int msm_gpio_clear_detect_status( struct gpio_chip *chip, unsigned offset )
+{
+    struct msm_gpio_dev *msm_gpio = TO_MSM_GPIO_DEV(chip);
+	unsigned b = bit(offset);
+
+    msm_gpio->int_status_copy |= readl(msm_gpio->regs.int_status);
+    msm_gpio->int_status_copy &= ~b;
+    writel(b, msm_gpio->regs.int_clear);
+    msm_gpio_update_both_edge_detect(msm_gpio);
+    return 0;
+}
+
+static inline void forget_level_irq(struct msm_gpio_dev *msm_gpio, unsigned offset);
+
+int msm_gpio_configure( struct gpio_chip *chip, unsigned offset, unsigned long flags )
+{
+    struct msm_gpio_dev *msm_gpio = TO_MSM_GPIO_DEV(chip);
+	unsigned b = bit(offset);
+	unsigned v;
+    unsigned int irq = offset + msm_gpio->irq_base;
+
+	if (flags & (GPIOF_OUTPUT_LOW | GPIOF_OUTPUT_HIGH))
+		msm_gpio_write(msm_gpio, offset, flags & GPIOF_OUTPUT_HIGH);
+
+	if (flags & (GPIOF_INPUT | GPIOF_DRIVE_OUTPUT)) {
+		v = readl(msm_gpio->regs.oe);
+		if (flags & GPIOF_DRIVE_OUTPUT) {
+			writel(v | b, msm_gpio->regs.oe);
+		} else {
+			writel(v & (~b), msm_gpio->regs.oe);
+		}
+	}
+
+    if (flags & (IRQF_TRIGGER_MASK | GPIOF_IRQF_TRIGGER_NONE)) {
+		if (flags & (IRQF_TRIGGER_FALLING | IRQF_TRIGGER_RISING)) {
+			set_gpio_bit(offset, msm_gpio->regs.int_edge);
+			irq_desc[irq].handle_irq = handle_edge_irq;
+		} else {
+			clr_gpio_bit(offset, msm_gpio->regs.int_edge);
+			irq_desc[irq].handle_irq = handle_level_irq;
+		}
+
+        if ((flags & (IRQF_TRIGGER_FALLING | IRQF_TRIGGER_RISING)) == (IRQF_TRIGGER_FALLING | IRQF_TRIGGER_RISING)) {
+			msm_gpio->both_edge_detect |= b;
+			msm_gpio_update_both_edge_detect(msm_gpio);
+		} else {
+			msm_gpio->both_edge_detect &= ~b;
+			if (flags & (IRQF_TRIGGER_RISING | IRQF_TRIGGER_HIGH)) {
+				set_gpio_bit(offset, msm_gpio->regs.int_pos);
+			} else {
+				clr_gpio_bit(offset, msm_gpio->regs.int_pos);
+			}
+		}
+	}
+    return 0;
+}
+
 #if MSM_GPIO_DONT_LATCH_LEVEL_IRQS
 static inline void forget_level_irq(struct msm_gpio_dev *msm_gpio,
 				unsigned offset)
@@ -194,10 +302,13 @@ static int msm_gpio_irq_set_type(unsigned int irq, unsigned int flow_type)
 	unsigned long irq_flags;
 	struct msm_gpio_dev *msm_gpio = get_irq_chip_data(irq);
 	unsigned offset = irq - msm_gpio->irq_base;
+    unsigned b = bit(offset);
 
+#if 0
 	if ((flow_type & (IRQF_TRIGGER_FALLING | IRQF_TRIGGER_RISING)) ==
 		(IRQF_TRIGGER_FALLING | IRQF_TRIGGER_RISING))
 		return -ENOTSUPP;
+#endif
 
 	if ((flow_type & (IRQF_TRIGGER_HIGH | IRQF_TRIGGER_LOW)) ==
 		(IRQF_TRIGGER_HIGH | IRQF_TRIGGER_LOW))
@@ -213,10 +324,24 @@ static int msm_gpio_irq_set_type(unsigned int irq, unsigned int flow_type)
 		irq_desc[irq].handle_irq = handle_level_irq;
 	}
 
+#if 1
+	if ((flow_type & (IRQF_TRIGGER_FALLING | IRQF_TRIGGER_RISING)) == (IRQF_TRIGGER_FALLING | IRQF_TRIGGER_RISING)) {
+		msm_gpio->both_edge_detect |= b;
+		msm_gpio_update_both_edge_detect(msm_gpio);
+	} else {
+		msm_gpio->both_edge_detect &= ~b;
+		if (flow_type & (IRQF_TRIGGER_RISING | IRQF_TRIGGER_HIGH)) {
+			set_gpio_bit(offset, msm_gpio->regs.int_pos);
+		} else {
+			clr_gpio_bit(offset, msm_gpio->regs.int_pos);
+		}
+	}
+#else
 	if (flow_type & (IRQF_TRIGGER_HIGH | IRQF_TRIGGER_RISING))
 		set_gpio_bit(offset, msm_gpio->regs.int_pos);
 	else
 		clr_gpio_bit(offset, msm_gpio->regs.int_pos);
+#endif
 
 	spin_unlock_irqrestore(&msm_gpio->lock, irq_flags);
 
@@ -274,8 +399,16 @@ static irqreturn_t msm_gpio_irq_handler(int irq, void *dev)
 	s = readl(msm_gpio->regs.int_status);
 	e = readl(msm_gpio->regs.int_en);
 	v = s & e;
+#if 1
+	if (v){
+		writel(v, msm_gpio->regs.int_clear);
+		msm_gpio_update_both_edge_detect(msm_gpio);
+	}
+#else
 	if (v)
 		writel(v, msm_gpio->regs.int_clear);
+#endif
+
 	spin_unlock_irqrestore(&msm_gpio->lock, irq_flags);
 
 	if (!v)
@@ -329,7 +462,10 @@ static int msm_gpio_probe(struct platform_device *dev)
 	msm_gpio->gpio_chip.get              = gpio_chip_get;
 	msm_gpio->gpio_chip.set              = gpio_chip_set;
 	msm_gpio->gpio_chip.to_irq           = gpio_chip_to_irq;
-	msm_gpio->irq_base                   = pdata->irq_base;
+	msm_gpio->gpio_chip.configure           = msm_gpio_configure;
+	msm_gpio->gpio_chip.read_detect_status  = msm_gpio_read_detect_status;
+	msm_gpio->gpio_chip.clear_detect_status = msm_gpio_clear_detect_status;
+    msm_gpio->irq_base                   = pdata->irq_base;
 	msm_gpio->irq_summary                = pdata->irq_summary;
 
 	ret = gpiochip_add(&msm_gpio->gpio_chip);

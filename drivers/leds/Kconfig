@@ -261,6 +261,14 @@ config LEDS_PMIC8058
 	  (Power Management IC) chip on Qualcomm reference boards,
 	  for example SURF and FFAs.
 
+config LEDS_I2C
+	tristate "LED Support for I2C connected LEDs"
+	depends on LEDS_CLASS && GENERIC_GPIO
+	help
+	  This option enables support for the LEDs connected to I2C
+	  Module. To be useful the particular board must have LEDs
+	  and they must be connected to the I2C lines.
+
 comment "LED Triggers"
 
 config LEDS_TRIGGERS

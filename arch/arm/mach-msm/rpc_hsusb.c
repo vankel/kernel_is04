@@ -1,3 +1,17 @@
+/*
+* Certain software is contributed or developed by TOSHIBA CORPORATION.
+* Copyright (C) 2010 TOSHIBA CORPORATION All rights reserved.
+* This software is licensed under the terms of the GNU General Public
+* License version 2, as published by FSF, and
+* may be copied, distributed, and modified under those terms.
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+* This code is based on rpc_hsusb.c.
+* The original copyright and notice are described below.
+*/
+
 /* linux/arch/arm/mach-msm/rpc_hsusb.c
  *
  * Copyright (c) 2008-2009, Code Aurora Forum. All rights reserved.
@@ -47,6 +61,12 @@ struct msm_hsusb_rpc_ids {
 	unsigned long	reset_rework_installed;
 	unsigned long	enable_pmic_ulpi_data0;
 	unsigned long	disable_pmic_ulpi_data0;
+    unsigned long   cable_det_notifi_init_comp_proc;
+	unsigned long   cable_det_notifi_disconnect_proc;
+	unsigned long   cable_det_notifi_suspend_proc;
+	unsigned long   cable_det_notifi_resume_proc;
+	unsigned long   cable_det_notifi_usb_vdd_off_proc;
+    unsigned long   cable_det_notifi_earphone_status_proc;
 };
 
 static struct msm_hsusb_rpc_ids usb_rpc_ids;
@@ -66,6 +86,12 @@ static int msm_hsusb_init_rpc_ids(unsigned long vers)
 		usb_rpc_ids.reset_rework_installed	= 17;
 		usb_rpc_ids.enable_pmic_ulpi_data0	= 18;
 		usb_rpc_ids.disable_pmic_ulpi_data0	= 19;
+        usb_rpc_ids.cable_det_notifi_init_comp_proc       = 26;
+		usb_rpc_ids.cable_det_notifi_disconnect_proc      = 27;
+		usb_rpc_ids.cable_det_notifi_suspend_proc         = 28;
+		usb_rpc_ids.cable_det_notifi_resume_proc          = 29;
+		usb_rpc_ids.cable_det_notifi_usb_vdd_off_proc     = 30;
+        usb_rpc_ids.cable_det_notifi_earphone_status_proc = 31;
 		return 0;
 	} else if (vers == 0x00010002) {
 		usb_rpc_ids.prog			= 0x30000064;
@@ -79,6 +105,13 @@ static int msm_hsusb_init_rpc_ids(unsigned long vers)
 		usb_rpc_ids.reset_rework_installed	= 17;
 		usb_rpc_ids.enable_pmic_ulpi_data0	= 18;
 		usb_rpc_ids.disable_pmic_ulpi_data0	= 19;
+        usb_rpc_ids.cable_det_notifi_init_comp_proc       = 26;
+        usb_rpc_ids.cable_det_notifi_disconnect_proc      = 27;
+        usb_rpc_ids.cable_det_notifi_suspend_proc         = 28;
+        usb_rpc_ids.cable_det_notifi_resume_proc          = 29;
+        usb_rpc_ids.cable_det_notifi_usb_vdd_off_proc     = 30;
+        usb_rpc_ids.cable_det_notifi_earphone_status_proc = 31;
+
 		return 0;
 	} else {
 		pr_info("%s: no matches found for version\n",
@@ -610,3 +643,172 @@ void hsusb_chg_connected(enum chg_type chgtype)
 }
 EXPORT_SYMBOL(hsusb_chg_connected);
 #endif
+
+/* Toshiba USB functions */
+int hsusb_cable_det_notifi_initialize_complete(uint32_t drv)
+{
+	int rc = 0;
+	struct hsusb_phy_start_req {
+		struct rpc_request_hdr hdr;
+		uint32_t drv;
+	} req;
+
+	if (!usb_ep || IS_ERR(usb_ep)) {
+		printk(KERN_ERR "%s: hsusb_cable_det_notifi_initialize_complete rpc failed before call,"
+			"rc = %ld\n", __func__, PTR_ERR(usb_ep));
+		return -EAGAIN;
+	}
+
+	req.drv = cpu_to_be32(drv);
+	rc = msm_rpc_call(usb_ep, usb_rpc_ids.cable_det_notifi_init_comp_proc,
+		&req, sizeof(req), 5 * HZ);
+
+	if (rc < 0) {
+		printk(KERN_ERR "%s: hsusb_cable_det_notifi_initialize_complete failed! rc = %d\n",
+			__func__, rc);
+	} else
+		printk(KERN_INFO "hsusb_cable_det_notifi_initialize_complete\n");
+
+	return rc;
+}
+EXPORT_SYMBOL(hsusb_cable_det_notifi_initialize_complete);
+
+int hsusb_cable_det_notifi_earphone_status(int status)
+{
+	int rc = 0;
+	struct hsusb_phy_start_req {
+		struct rpc_request_hdr hdr;
+		int status;
+	} req;
+
+	if (!usb_ep || IS_ERR(usb_ep)) {
+		printk(KERN_ERR "%s: hsusb_cable_det_notifi_earphone_status rpc failed before call,"
+			"rc = %ld\n", __func__, PTR_ERR(usb_ep));
+		return -EAGAIN;
+	}
+
+	req.status = cpu_to_be32(status);
+	rc = msm_rpc_call(usb_ep, usb_rpc_ids.cable_det_notifi_earphone_status_proc,
+		&req, sizeof(req), 5 * HZ);
+
+	if (rc < 0) {
+		printk(KERN_ERR "%s: hsusb_cable_det_notifi_earphone_status failed! rc = %d\n",
+			__func__, rc);
+	} else
+		printk(KERN_INFO "hsusb_cable_det_notifi_earphone_status\n");
+
+	return rc;
+}
+EXPORT_SYMBOL(hsusb_cable_det_notifi_earphone_status);
+
+int hsusb_cable_det_notifi_disconnect(void)
+{
+	int rc = 0;
+	struct hsusb_phy_start_req {
+		struct rpc_request_hdr hdr;
+		//uint32_t drv;
+	} req;
+
+	if (!usb_ep || IS_ERR(usb_ep)) {
+		printk(KERN_ERR "%s: hsusb_cable_det_notifi_disconnect rpc failed before call,"
+			"rc = %ld\n", __func__, PTR_ERR(usb_ep));
+		return -EAGAIN;
+	}
+
+	//req.drv = cpu_to_be32(drv);
+	rc = msm_rpc_call(usb_ep, usb_rpc_ids.cable_det_notifi_disconnect_proc,
+		&req, sizeof(req), 5 * HZ);
+
+	if (rc < 0) {
+		printk(KERN_ERR "%s: hsusb_cable_det_notifi_disconnect failed! rc = %d\n",
+			__func__, rc);
+	} else
+		printk(KERN_INFO "hsusb_cable_det_notifi_disconnect\n");
+
+	return rc;
+}
+EXPORT_SYMBOL(hsusb_cable_det_notifi_disconnect);
+
+int hsusb_cable_det_notifi_suspend(uint32_t drv)
+{
+	int rc = 0;
+	struct hsusb_phy_start_req {
+		struct rpc_request_hdr hdr;
+		uint32_t drv;
+	} req;
+
+	if (!usb_ep || IS_ERR(usb_ep)) {
+		printk(KERN_ERR "%s: hsusb_cable_det_notifi_suspend rpc failed before call,"
+			"rc = %ld\n", __func__, PTR_ERR(usb_ep));
+		return -EAGAIN;
+	}
+
+	req.drv = cpu_to_be32(drv);
+	rc = msm_rpc_call(usb_ep, usb_rpc_ids.cable_det_notifi_suspend_proc,
+		&req, sizeof(req), 5 * HZ);
+
+	if (rc < 0) {
+		printk(KERN_ERR "%s: hsusb_cable_det_notifi_suspend failed! rc = %d\n",
+			__func__, rc);
+	} else
+		printk(KERN_INFO "hsusb_cable_det_notifi_suspend\n");
+
+	return rc;
+}
+EXPORT_SYMBOL(hsusb_cable_det_notifi_suspend);
+
+int hsusb_cable_det_notifi_resume(uint32_t drv)
+{
+	int rc = 0;
+	struct hsusb_phy_start_req {
+		struct rpc_request_hdr hdr;
+		uint32_t drv;
+	} req;
+
+	if (!usb_ep || IS_ERR(usb_ep)) {
+		printk(KERN_ERR "%s: hsusb_cable_det_notifi_resume rpc failed before call,"
+			"rc = %ld\n", __func__, PTR_ERR(usb_ep));
+		return -EAGAIN;
+	}
+
+	req.drv = cpu_to_be32(drv);
+	rc = msm_rpc_call(usb_ep, usb_rpc_ids.cable_det_notifi_resume_proc,
+		&req, sizeof(req), 5 * HZ);
+
+	if (rc < 0) {
+		printk(KERN_ERR "%s: hsusb_cable_det_notifi_resume failed! rc = %d\n",
+			__func__, rc);
+	} else
+		printk(KERN_INFO "hsusb_cable_det_notifi_resume\n");
+
+	return rc;
+}
+EXPORT_SYMBOL(hsusb_cable_det_notifi_resume);
+
+int hsusb_cable_usb_vdd_off(void)
+{
+	int rc = 0;
+	struct hsusb_phy_start_req {
+		struct rpc_request_hdr hdr;
+		//uint32_t drv;
+	} req;
+
+	if (!usb_ep || IS_ERR(usb_ep)) {
+		printk(KERN_ERR "%s: hsusb_cable_usb_vdd_off rpc failed before call,"
+			"rc = %ld\n", __func__, PTR_ERR(usb_ep));
+		return -EAGAIN;
+	}
+
+	//req.drv = cpu_to_be32(drv);
+	rc = msm_rpc_call(usb_ep, usb_rpc_ids.cable_det_notifi_usb_vdd_off_proc,
+		&req, sizeof(req), 5 * HZ);
+
+	if (rc < 0) {
+		printk(KERN_ERR "%s: hsusb_cable_usb_vdd_off failed! rc = %d\n",
+			__func__, rc);
+	} else
+		printk(KERN_INFO "hsusb_cable_usb_vdd_off\n");
+
+	return rc;
+}
+EXPORT_SYMBOL(hsusb_cable_usb_vdd_off);

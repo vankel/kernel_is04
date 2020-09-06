@@ -1,4 +1,22 @@
 /*
+ * Certain software is contributed or developed by 
+ * FUJITSU TOSHIBA MOBILE COMMUNICATIONS LIMITED.
+ *
+ * COPYRIGHT(C) FUJITSU TOSHIBA MOBILE COMMUNICATIONS LIMITED 2011
+ *
+ * This software is licensed under the terms of the GNU General Public
+ * License version 2, as published by FSF, and
+ * may be copied, distributed, and modified under those terms.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * This code is based on gpio-v1.h.
+ * The original copyright and notice are described below.
+ */
+/*
  * Copyright (C) 2007 Google, Inc.
  * Copyright (c) 2009-2010, Code Aurora Forum. All rights reserved.
  * Author: Mike Lockwood <lockwood@android.com>
@@ -127,6 +145,7 @@ int msm_gpios_disable(const struct msm_gpio *table, int size);
 #define GPIOIRQF_SHARED         0x00000001 /* the irq line is shared with
 					    * other inputs */
 
+#if 0
 #ifdef CONFIG_GPIOLIB
 static inline int gpio_configure(unsigned int gpio, unsigned long flags)
 {
@@ -149,6 +168,7 @@ static inline int gpio_clear_detect_status(unsigned int gpio)
 int gpio_configure(unsigned int gpio, unsigned long flags);
 int gpio_read_detect_status(unsigned int gpio);
 int gpio_clear_detect_status(unsigned int gpio);
+#endif
 #endif
 
 #endif

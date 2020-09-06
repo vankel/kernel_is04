@@ -1,3 +1,21 @@
+/*
+ * Certain software is contributed or developed by 
+ * FUJITSU TOSHIBA MOBILE COMMUNICATIONS LIMITED.
+ *
+ * COPYRIGHT(C) FUJITSU TOSHIBA MOBILE COMMUNICATIONS LIMITED 2011
+ *
+ * This software is licensed under the terms of the GNU General Public
+ * License version 2, as published by FSF, and
+ * may be copied, distributed, and modified under those terms.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * This code is based on proc_comm.h.
+ * The original copyright and notice are described below.
+ */
 /* arch/arm/mach-msm/proc_comm.h
  *
  * Copyright (c) 2007-2009, Code Aurora Forum. All rights reserved.
@@ -145,8 +163,28 @@ enum {
 	PCOM_OEM_TEST_CMD = PCOM_OEM_FIRST_CMD,
 
 	/* add OEM PROC COMM commands here */
+    PCOM_OEM_001,
+    PCOM_OEM_002,
+    PCOM_OEM_003,
+    PCOM_OEM_004,
+    PCOM_OEM_005,
+    PCOM_OEM_006,
+    PCOM_OEM_007,
+    PCOM_OEM_008,
+    PCOM_OEM_009,
+    PCOM_OEM_010,
+    PCOM_OEM_011,
+    PCOM_OEM_012,
+    PCOM_OEM_013,
+    PCOM_OEM_014,
+    PCOM_OEM_015,
+    PCOM_OEM_016,
+    PCOM_OEM_017,
+    PCOM_OEM_018,
+    PCOM_OEM_019,
+    PCOM_OEM_020,
 
-	PCOM_OEM_LAST = PCOM_OEM_TEST_CMD,
+	PCOM_OEM_LAST = PCOM_OEM_020,
 };
 
 enum {

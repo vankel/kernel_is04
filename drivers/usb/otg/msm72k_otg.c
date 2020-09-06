@@ -1,3 +1,21 @@
+/*
+ * Certain software is contributed or developed by 
+ * FUJITSU TOSHIBA MOBILE COMMUNICATIONS LIMITED.
+ *
+ * COPYRIGHT(C) FUJITSU TOSHIBA MOBILE COMMUNICATIONS LIMITED 2011
+ *
+ * This software is licensed under the terms of the GNU General Public
+ * License version 2, as published by FSF, and
+ * may be copied, distributed, and modified under those terms.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * This code is based on msm72k_otg.c.
+ * The original copyright and notice are described below.
+ */
 /* Copyright (c) 2009-2010, Code Aurora Forum. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
@@ -35,15 +53,54 @@
 #include <mach/clk.h>
 
 #define MSM_USB_BASE	(dev->regs)
+#if 1	/* + USB_FROYO	*/
+#define is_host_a()	((OTGSC_ID & readl(USB_OTGSC)) ? 0 : 1)         /* DEBUG */
+#define is_b_sess_vld_a()	((OTGSC_BSV & readl(USB_OTGSC)) ? 1 : 0) /* DEBUG */
+static unsigned char is_host();
+static unsigned char is_b_sess_vld();
+#else	/* + USB_FROYO	*/
 #define is_host()	((OTGSC_ID & readl(USB_OTGSC)) ? 0 : 1)
 #define is_b_sess_vld()	((OTGSC_BSV & readl(USB_OTGSC)) ? 1 : 0)
+#endif		/* + USB_FROYO	*/
 #define USB_LINK_RESET_TIMEOUT	(msecs_to_jiffies(10))
 #define DRIVER_NAME	"msm_otg"
 
 static void otg_reset(struct otg_transceiver *xceiv);
 static void msm_otg_set_vbus_state(int online);
+/* +(S)USB_FROYO	*/
+void msm_usb_phy_reg_init(void);
+void msm_otg_enable_irq(void);
+void msm_otg_disable_irq(void);
+extern enum chg_type usb_chg_type;
+static unsigned char no_change_int_flag = 0;
+extern int hsusb_cable_det_notifi_disconnect(void);
+extern void gserial_datacable_disconnected(void); 
+/* +(E)USB_FROYO	*/
 
 struct msm_otg *the_msm_otg;
+/* +(S)USB_FROYO	*/
+#if 1
+static unsigned char ReceivedCableDetectEvent = 0;/* +101025_9999 */
+
+static unsigned char is_host()
+{
+    struct msm_otg *dev = the_msm_otg;
+    return (ReceivedCableDetectEvent ? is_host_a() : 0 );
+}
+static unsigned char is_b_sess_vld()
+{
+    struct msm_otg *dev = the_msm_otg;
+    return (ReceivedCableDetectEvent ? is_b_sess_vld_a() : 0);
+}
+#endif
+/* +(E)USB_FROYO	*/
+
+extern int udc_online_complete;
+
+
+/* +(S)USB_FROYO 371 */
+static int msm_otg_phy_reset(struct msm_otg *dev);
+/* +(E)USB_FROYO 371 */
 
 static unsigned ulpi_read(struct msm_otg *dev, unsigned reg)
 {
@@ -192,6 +249,11 @@ static void msm_otg_start_peripheral(struct otg_transceiver *xceiv, int on)
 		atomic_set(&dev->chg_type, USB_CHG_TYPE__INVALID);
 		usb_gadget_vbus_disconnect(xceiv->gadget);
 
+		/* +(S)USB_FROYO	*/
+        ReceivedCableDetectEvent = 0;
+		printk("USB_DEBUG:ReceivedCableDetectEvent=%d(line%d)\n",ReceivedCableDetectEvent,__LINE__); 
+		/* +(E)USB_FROYO	*/
+
 		/* decrement the clk reference count so that
 		 * it would be off when disabled from
 		 * low power mode routine
@@ -245,9 +307,21 @@ static int msm_otg_suspend(struct msm_otg *dev)
 	unsigned otgsc;
 	enum chg_type curr_chg = atomic_read(&dev->chg_type);
 
+	int is_host_connected = 0;	/* +USB_FROYO*/
+
+//debug log
+pr_info("[otg/msm72k_otg.c] %s()\n", __func__);
 	disable_irq(dev->irq);
 	if (atomic_read(&dev->in_lpm))
 		goto out;
+
+	/* +(S)USB_FROYO	*/
+    if (is_host_a())
+        is_host_connected = 1;
+	/* +(E)USB_FROYO	*/
+
+//tome debug
+pr_info("[otg/msm72k_otg.c] is_host_connected=%d\n", is_host_connected);
 
 	/* In case of fast plug-in and plug-out inside the otg_reset() the
 	 * servicing of BSV is missed (in the window of after phy and link
@@ -256,6 +330,7 @@ static int msm_otg_suspend(struct msm_otg *dev)
 	 */
 	if (is_b_sess_vld() && !is_host() &&
 				curr_chg != USB_CHG_TYPE__WALLCHARGER &&
+				usb_chg_type != USB_CHG_TYPE__WALLCHARGER &&	/* +USB_FROYO	*/
 				(dev->pdata->otg_mode == OTG_ID)) {
 		otgsc = readl(USB_OTGSC);
 		writel(otgsc, USB_OTGSC);
@@ -264,6 +339,7 @@ static int msm_otg_suspend(struct msm_otg *dev)
 		enable_irq(dev->irq);
 		return -1;
 	}
+    usb_chg_type = USB_CHG_TYPE__INVALID;	/* +USB_FROYO	*/
 
 	ulpi_read(dev, 0x14);/* clear PHY interrupt latch register */
 	/*
@@ -318,7 +394,18 @@ static int msm_otg_suspend(struct msm_otg *dev)
 	pr_info("%s: usb in low power mode\n", __func__);
 
 out:
+#if 0	/* + USB_FROYO	*/
 	enable_irq(dev->irq);
+#else	/* + USB_FROYO	*/
+
+	/* +(S) USB_FROYO	*/
+    if(is_host_connected)
+    {
+        is_host_connected  = 0;
+		enable_irq(dev->irq);
+    }
+	/* +(E) USB_FROYO	*/
+#endif	/* + USB_FROYO	*/
 
 	/* TBD: as there is no bus suspend implemented as of now
 	 * it should be dummy check
@@ -331,6 +418,8 @@ static int msm_otg_resume(struct msm_otg *dev)
 {
 	unsigned temp;
 
+//debug log
+pr_info("[otg/msm72k_otg.c] %s()\n", __func__);
 	if (!atomic_read(&dev->in_lpm))
 		return 0;
 
@@ -368,6 +457,8 @@ static int msm_otg_set_suspend(struct otg_transceiver *xceiv, int suspend)
 {
 	struct msm_otg *dev = container_of(xceiv, struct msm_otg, otg);
 
+//debug log
+pr_info("[otg/msm72k_otg.c] %s() suspend=%d\n", __func__, suspend);
 	if (!dev || (dev != the_msm_otg))
 		return -ENODEV;
 
@@ -411,6 +502,8 @@ static int msm_otg_set_peripheral(struct otg_transceiver *xceiv,
 {
 	struct msm_otg *dev = container_of(xceiv, struct msm_otg, otg);
 
+//debug log
+pr_info("[otg/msm72k_otg.c] %s()\n", __func__);
 	if (!dev || (dev != the_msm_otg))
 		return -ENODEV;
 
@@ -443,6 +536,8 @@ static int msm_otg_set_host(struct otg_transceiver *xceiv, struct usb_bus *host)
 {
 	struct msm_otg *dev = container_of(xceiv, struct msm_otg, otg);
 
+//debug log
+pr_info("[otg/msm72k_otg.c] %s()\n", __func__);
 	if (!dev || (dev != the_msm_otg))
 		return -ENODEV;
 
@@ -454,6 +549,10 @@ static int msm_otg_set_host(struct otg_transceiver *xceiv, struct usb_bus *host)
 		dev->otg.host = 0;
 		dev->start_host = 0;
 		disable_idgnd(dev);
+#if 1	/* +(S)USB_FROYO	*/
+        ReceivedCableDetectEvent = 0;
+		printk("USB_DEBUG:ReceivedCableDetectEvent=%d(line%d)\n",ReceivedCableDetectEvent,__LINE__);
+#endif	/* +(E)USB_FROYO	*/
 		return 0;
 	}
 	dev->otg.host = host;
@@ -472,9 +571,181 @@ static int msm_otg_set_host(struct otg_transceiver *xceiv, struct usb_bus *host)
 static void msm_otg_set_vbus_state(int online)
 {
 	struct msm_otg *dev = the_msm_otg;
+//debug log
+pr_info("[otg/msm72k_otg.c] %s()\n", __func__);
 
 	if (online)
 		msm_otg_set_suspend(&dev->otg, 0);
+}
+
+#define USB_LINK_RESET_TIMEOUT1  (msecs_to_jiffies(10))
+void msm_otg_enable_irq(void)
+{
+#if 0
+	struct msm_otg *dev = the_msm_otg;
+	unsigned long time_msec_irq = 0;
+	time_msec_irq= jiffies_to_msecs(jiffies);
+	if(((time_msec_irq - time_msec_init) < 2000) && is_host())
+	{
+		msleep(10000);
+	}
+	enable_irq(dev->irq);
+#else
+	struct msm_otg *dev = the_msm_otg;
+	unsigned otgsc;
+	unsigned long timeout;
+
+//debug log
+pr_info("[otg/msm72k_otg.c] %s()\n", __func__);
+	/* unsigned long time_msec_irq = 0;	*/	/* FROYO	*/
+    if (dev->pmic_notif_supp)
+		dev->pdata->pmic_enable_ldo(1);	/* FROYO	*/
+	
+	msm_otg_resume(dev);
+
+	if (!is_phy_clk_disabled())
+		goto out;
+
+	timeout = jiffies + usecs_to_jiffies(100);
+	enable_phy_clk();
+	while (is_phy_clk_disabled()) {
+		if (time_after(jiffies, timeout)) {
+			pr_err("%s: Unable to wakeup phy\n", __func__);
+			/* otg_reset(dev);	*/		/* FROYO*/
+			otg_reset(&dev->otg);		/* FROYO*/
+			break;
+		}
+		udelay(10);
+	}
+out:
+
+	enable_irq(dev->irq);
+
+    otgsc = readl(USB_OTGSC);
+   	pr_info("ID -> (%s) RPC\n", (otgsc & OTGSC_ID) ? "B" : "A");			/* USB_FROYO  */
+    if( !(otgsc & OTGSC_ID) )
+    {
+    	udc_online_complete = 0; 	
+    	msm_otg_start_host(&dev->otg, is_host());
+    } else if (otgsc & OTGSC_BSV) {
+    	pr_info("VBUS - (%s) RPC\n", otgsc & OTGSC_BSV ? "ON" : "OFF"); 	/* USB_FROYO  */
+    	if (!is_host())
+    		msm_otg_start_peripheral(&dev->otg, is_b_sess_vld());
+    }
+#if 1
+    else
+    {
+        no_change_int_flag = 1;
+    }
+#endif
+    writel(otgsc, USB_OTGSC);
+#endif
+}
+
+#if 1 
+void msm_otg_disable_irq(void)
+{
+    struct msm_otg *dev = the_msm_otg;
+    
+//debug log
+pr_info("[otg/msm72k_otg.c] no_change_int_flag=%d \n",no_change_int_flag);
+    if(no_change_int_flag != 0)
+    {
+        no_change_int_flag = 0;
+        msm_otg_set_suspend(&dev->otg, 1);
+		hsusb_cable_det_notifi_disconnect();
+    }
+	gserial_datacable_disconnected();   
+}
+#endif
+
+void msm_usb_phy_reg_init(void)
+{
+	unsigned long timeout;
+/* USB_FROYO 371	
+	unsigned temp; 
+*/
+	struct msm_otg *dev = the_msm_otg;
+
+//debug log
+pr_info("[otg/msm72k_otg.c] %s()\n", __func__);
+#if 1
+
+	udc_online_complete = 1; 
+	ReceivedCableDetectEvent = 1;
+//	printk("USB_DEBUG:ReceivedCableDetectEvent=%d(line%d) udc_online_complete=%d\n",ReceivedCableDetectEvent,__LINE__,udc_online_complete); 
+	clk_enable(dev->hs_pclk);	/* FROYO	*/
+	if (dev->hs_cclk)
+	{
+		printk("USB_DEBUG:enable core clock!\n");
+		clk_enable(dev->hs_cclk);	/* FROYO	*/
+	}
+#endif
+
+	clk_enable(dev->hs_clk);	/* FROYO	*/
+
+#if 1
+	/* FROYO
+	if (dev->phy_reset)
+		dev->phy_reset(dev->regs);
+	*/
+
+#if 0   /* +(S)USB_FROYO 371*/
+	if (dev->reset)
+		dev->reset(&dev->otg);
+#else
+	if (dev->pdata->phy_reset)
+		dev->pdata->phy_reset(dev->regs);
+	else
+		msm_otg_phy_reset(dev);
+#endif	/* +(E)USB_FROYO 371*/
+
+	/*disable all phy interrupts*/
+	ulpi_write(dev, 0xFF, 0x0F);
+	ulpi_write(dev, 0xFF, 0x12);
+	msleep(100);
+#endif
+
+    writel(USBCMD_RESET, USB_USBCMD);
+	timeout = jiffies + USB_LINK_RESET_TIMEOUT1;
+	do {
+		if (time_after(jiffies, timeout)) {
+			pr_err("msm_otg: usb link reset timeout\n");
+			break;
+		}
+        msleep(1);
+	} while (readl(USB_USBCMD) & USBCMD_RESET);
+
+    /* select ULPI phy */
+    writel(0x80000000, USB_PORTSC);
+
+#if 0	/* +(S)USB_FROYO 371*/ 	
+	temp = ulpi_read(dev, ULPI_CONFIG_REG);
+	temp |= ULPI_AMPLITUDE_MAX;
+	ulpi_write(dev, temp, ULPI_CONFIG_REG);
+#else
+	set_pre_emphasis_level(dev);
+	set_cdr_auto_reset(dev);
+	set_driver_amplitude(dev);
+#endif	/* +(E)USB_FROYO 371*/
+
+    writel(0x0, USB_AHB_BURST);
+    writel(0x00, USB_AHB_MODE);
+    
+	clk_disable(dev->hs_clk);	/*FROYO	*/
+	if (dev->otg.gadget)
+        enable_sess_valid(dev);
+
+    if (dev->otg.host)
+    	enable_idgnd(dev);
+
+	clk_disable(dev->hs_pclk);  /* FROYO	*/
+
+	if (dev->hs_cclk)				/* FROYO	*/
+	{
+		printk("USB_DEBUG:disable core clock!\n");
+		clk_disable(dev->hs_cclk);
+	}
 }
 
 /* pmic irq handlers are called from thread context and
@@ -483,6 +754,8 @@ static void msm_otg_set_vbus_state(int online)
 static irqreturn_t pmic_vbus_on_irq(int irq, void *data)
 {
 	struct msm_otg *dev = the_msm_otg;
+//debug log
+pr_info("[otg/msm72k_otg.c] %s()\n", __func__);
 
 	if (!dev->otg.gadget)
 		return IRQ_HANDLED;
@@ -499,7 +772,21 @@ static irqreturn_t msm_otg_irq(int irq, void *data)
 	struct msm_otg *dev = data;
 	u32 otgsc = 0;
 
+
+#if 1	/* +(S)USB_FROYO	*/
+	if ( !ReceivedCableDetectEvent ){
+		pr_info("%s: request_irq for otg"
+					"not received cable_detect_event!!!!\n", __func__);
+		disable_irq(dev->irq);
+		return IRQ_HANDLED;
+	}
+#endif	/* +(E)USB_FROYO	*/
+
+//debug log
+//pr_info("[otg/msm72k_otg.c] %s()\n", __func__);
 	if (atomic_read(&dev->in_lpm)) {
+//debug log
+pr_info("[otg/msm72k_otg.c] call msm_otg_resume() in %s()\n", __func__);
 		msm_otg_resume(dev);
 		return IRQ_HANDLED;
 	}
@@ -759,6 +1046,8 @@ static ssize_t otg_mode_write(struct file *file, const char __user *buf,
 	struct msm_otg *dev = file->private_data;
 	struct otg_transceiver *otg = &dev->otg;
 	int ret = count;
+//debug log
+pr_info("[otg/msm72k_otg.c] %s()\n", __func__);
 
 	if (otg->host) {
 		pr_err("%s: mode switch not supported with host mode\n",
@@ -817,6 +1106,8 @@ static int __init msm_otg_probe(struct platform_device *pdev)
 	int vbus_on_irq = 0;
 	struct resource *res;
 	struct msm_otg *dev;
+//debug log
+pr_info("[otg/msm72k_otg.c] %s()\n", __func__);
 
 	dev = kzalloc(sizeof(struct msm_otg), GFP_KERNEL);
 	if (!dev)
@@ -930,6 +1221,9 @@ static int __init msm_otg_probe(struct platform_device *pdev)
 
 	otg_reset(&dev->otg);
 
+//debug log
+pr_info("[gadget/msm72k_otg.c] call request_irq() in %s()\n", __func__);
+pr_info("[gadget/msm72k_otg.c]     dev->irq=0x%x , name=msm_otg\n", dev->irq );
 	ret = request_irq(dev->irq, msm_otg_irq, IRQF_SHARED,
 					"msm_otg", dev);
 	if (ret) {

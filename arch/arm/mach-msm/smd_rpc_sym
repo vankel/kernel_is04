@@ -154,3 +154,5 @@
 0x300100A5  mmgsdisessionlib_fusion
 0x3001009C  remotefs_srv_api_fusion
 0x30010016  gsdi_exp_fusion
+0x300200A2  oem_rapi_common_pipe
+0x300200A3  oem_rapi_fclk

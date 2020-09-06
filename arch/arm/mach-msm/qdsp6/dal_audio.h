@@ -1,3 +1,20 @@
+/*
+ * Certain software is contributed or developed by TOSHIBA CORPORATION.
+ *
+ * Copyright (C) 2010 TOSHIBA CORPORATION All rights reserved.
+ *
+ * This software is licensed under the terms of the GNU General Public
+ * License version 2, as published by FSF, and
+ * may be copied, distributed, and modified under those terms.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * This code is based on dal_audio.h.
+ * The original copyright and notice are described below.
+ */
 /* Copyright (c) 2009-2010, Code Aurora Forum. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -588,6 +605,13 @@ struct adsp_buffer_event {
 #define ADSP_AUDIO_DEVICE_ID_TTY_HEADSET_SPKR			0x108151c
 #define ADSP_AUDIO_DEVICE_ID_I2S_SPKR				0x1089bf4
 #define ADSP_AUDIO_DEVICE_ID_NULL_SINK				0x108e512
+
+/* test devices */
+#define ADSP_AUDIO_DEVICE_ID_TEST_LB_HANDSET_MIC	0x2000000 //testmode loopback handset mic
+#define ADSP_AUDIO_DEVICE_ID_TEST_LB_HEADSET_MIC	0x2000001 //testmode loopback headset mic
+#define ADSP_AUDIO_DEVICE_ID_TEST_LB_HANDSET_SPKR	0x2000002 //testmode loopback receiver
+#define ADSP_AUDIO_DEVICE_ID_TEST_LB_HEADSET_SPKR	0x2000003 //testmode loopback headset speaker
+#define ADSP_AUDIO_DEVICE_ID_TEST_LB_SPKR_PHONE		0x2000004 //testmode loopback speaker
 
 /* BT A2DP playback device. */
 /* This device must be paired with */

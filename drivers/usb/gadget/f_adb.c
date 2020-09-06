@@ -1,4 +1,21 @@
 /*
+ * Certain software is contributed or developed by TOSHIBA CORPORATION.
+ *
+ * Copyright (C) 2010 TOSHIBA CORPORATION All rights reserved.
+ *
+ * This software is licensed under the terms of the GNU General Public
+ * License version 2, as published by FSF, and
+ * may be copied, distributed, and modified under those terms.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * This code is based on f_adb.c.
+ * The original copyright and notice are described below.
+ */
+/*
  * Gadget Driver for Android ADB
  *
  * Copyright (C) 2008 Google, Inc.
@@ -402,8 +419,18 @@ static ssize_t adb_write(struct file *fp, const char __user *buf,
 	if (_lock(&dev->write_excl))
 		return -EBUSY;
 
+/* USB_FROYO s */
+#if 1
+	if (!atomic_read(&dev->online)) {
+		_unlock(&dev->write_excl);
+		printk( "adb_write err offline \n" );
+		return -EIO;
+	}
+#else
 	if (!atomic_read(&dev->online))
 		return -EIO;
+#endif
+/* USB_FROYO e */
 
 	while (count > 0) {
 		if (atomic_read(&dev->error)) {

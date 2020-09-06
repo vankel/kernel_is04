@@ -797,11 +797,19 @@ failed:
 
 	return err;
 }
-
+int hidp_get_report(struct hidp_session * session, struct hid_report * report)
+{
+ 	unsigned char * data = (unsigned char *)kmalloc(report->size / 8 + 1, GFP_KERNEL);	
+	data[0] = report->id;
+	hidp_send_ctrl_message(session, HIDP_TRANS_GET_REPORT | HIDP_DATA_RTYPE_INPUT, data, report->size / 8 + 1);
+	kfree(data);
+	return 0;
+}
 int hidp_add_connection(struct hidp_connadd_req *req, struct socket *ctrl_sock, struct socket *intr_sock)
 {
 	struct hidp_session *session, *s;
 	int err;
+	struct hid_report * report;
 
 	BT_DBG("");
 
@@ -840,6 +848,7 @@ int hidp_add_connection(struct hidp_connadd_req *req, struct socket *ctrl_sock, 
 	skb_queue_head_init(&session->intr_transmit);
 
 	session->flags   = req->flags & (1 << HIDP_BLUETOOTH_VENDOR_ID);
+	session->flags	 |= (req->flags & (1 << HIDP_VIRTUAL_CABLE_UNPLUG));
 	session->idle_to = req->idle_to;
 
 	if (req->rd_size > 0) {
@@ -870,6 +879,8 @@ int hidp_add_connection(struct hidp_connadd_req *req, struct socket *ctrl_sock, 
 		session->leds = 0xff;
 		hidp_input_event(session->input, EV_LED, 0, 0);
 	}
+	list_for_each_entry(report, &session->hid->report_enum[HID_INPUT_REPORT].report_list, list)
+	hidp_get_report(session, report);
 
 	up_write(&hidp_session_sem);
 	return 0;

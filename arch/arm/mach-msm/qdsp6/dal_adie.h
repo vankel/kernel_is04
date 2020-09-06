@@ -1,3 +1,20 @@
+/*
+ * Certain software is contributed or developed by TOSHIBA CORPORATION.
+ *
+ * Copyright (C) 2010 TOSHIBA CORPORATION All rights reserved.
+ *
+ * This software is licensed under the terms of the GNU General Public
+ * License version 2, as published by FSF, and
+ * may be copied, distributed, and modified under those terms.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * This code is based on dal_adie.h.
+ * The original copyright and notice are described below.
+ */
 /* Copyright (c) 2009, Code Aurora Forum. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -88,6 +105,28 @@ enum {
 #define ADIE_PATH_SPKR_MONO_HDPH_MONO_RX	0x01073d84
 #define ADIE_PATH_SPKR_MONO_HDPH_STEREO_RX	0x01073d88
 #define ADIE_PATH_SPKR_STEREO_HDPH_STEREO_RX	0x01073d89
+
+/* Path IDs used for Sound */
+#define ADIE_PATH_HANDSET_SOUND_RX         0x01074110
+#define ADIE_PATH_HEADSET_MONO_SOUND_RX    ADIE_PATH_HEADSET_MONO_RX
+#define ADIE_PATH_HEADSET_STEREO_SOUND_RX  0x01074111
+#define ADIE_PATH_SPEAKER_SOUND_RX         0x01074112
+#define ADIE_PATH_HEADSET_SPEAKER_SOUND_RX 0x01074113
+#define ADIE_PATH_HANDSET_INCOM_RX         0x01074116
+#define ADIE_PATH_HEADSET_MONO_INCOM_RX    ADIE_PATH_HEADSET_MONO_RX
+#define ADIE_PATH_HEADSET_STEREO_INCOM_RX  0x01074117
+#define ADIE_PATH_SPEAKER_INCOM_RX         0x01074118
+#define ADIE_PATH_HEADSET_SPEAKER_INCOM_RX 0x01074119
+
+/* Path IDs used for Dummy */
+#define ADIE_PATH_DUMMY_TX                 0x01074114
+#define ADIE_PATH_DUMMY_RX                 0x01074115
+
+/* Path IDs used for Play Answering Machine */
+#define ADIE_PATH_OGM_TX                   0x01074120
+#define ADIE_PATH_OGM_RX                   0x01074121
+#define ADIE_PATH_REC_DUMMY_TX             0x01074122
+#define ADIE_PATH_REC_DUMMY_RX             0x01074123
 
 
 /** Fluence Profiles **/

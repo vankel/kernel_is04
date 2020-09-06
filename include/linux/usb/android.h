@@ -1,4 +1,22 @@
 /*
+ * Certain software is contributed or developed by 
+ * FUJITSU TOSHIBA MOBILE COMMUNICATIONS LIMITED.
+ *
+ * COPYRIGHT(C) FUJITSU TOSHIBA MOBILE COMMUNICATIONS LIMITED 2011
+ *
+ * This software is licensed under the terms of the GNU General Public
+ * License version 2, as published by FSF, and
+ * may be copied, distributed, and modified under those terms.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * This code is based on android.h.
+ * The original copyright and notice are described below.
+ */
+/*
  * Platform data for Android USB
  *
  * Copyright (C) 2008 Google, Inc.
@@ -27,6 +45,14 @@
 #define ANDROID_RMNET		0x0009
 #define ANDROID_RNDIS		0x000A
 
+#define ANDROID_GENERIC_ATPORT	0x000B
+
+
+// USB_FROYO+ s
+#define MSM_NV_UE_IMEI_SIZE 	9
+#define MSM_OTHER_IMEI_ASCII_MAX_LEN ( MSM_NV_UE_IMEI_SIZE - 1 ) * 2
+#define MSM_SERIAL_NUMBER_SIZE 11
+// USB_FROYO e
 struct android_usb_platform_data {
 	/* USB device descriptor fields */
 	__u16 vendor_id;
@@ -40,6 +66,9 @@ struct android_usb_platform_data {
 	char *manufacturer_name;
 
 	int self_powered;
+// USB_FROYO+ s
+	char product_serial_number[MSM_SERIAL_NUMBER_SIZE];
+// USB_FROYO+ e
 };
 /* composition support structure */
 struct usb_composition {

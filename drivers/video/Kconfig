@@ -2351,6 +2351,12 @@ config FB_MSM_MDDI_PRISM_WVGA
 	---help---
 	  Support for MDDI Prism WVGA (800x480) panel
 
+config FB_MSM_MDDI_4FWVGA
+	bool "MDDI 4FWVGA Panel"
+	select FB_MSM_MDDI
+	---help---
+	  Support for MDDI 4FWVGA (480x854) panel
+
 config FB_MSM_MDDI_TOSHIBA_WVGA_PORTRAIT
 	bool "MDDI Toshiba WVGA Portrait Panel"
 	select FB_MSM_MDDI_TOSHIBA_COMMON

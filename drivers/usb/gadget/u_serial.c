@@ -1,4 +1,22 @@
 /*
+ * Certain software is contributed or developed by 
+ * FUJITSU TOSHIBA MOBILE COMMUNICATIONS LIMITED.
+ *
+ * COPYRIGHT(C) FUJITSU TOSHIBA MOBILE COMMUNICATIONS LIMITED 2011
+ *
+ * This software is licensed under the terms of the GNU General Public
+ * License version 2, as published by FSF, and
+ * may be copied, distributed, and modified under those terms.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * This code is based on u_serial.c.
+ * The original copyright and notice are described below.
+ */
+/*
  * u_serial.c - utilities for USB gadget "serial port"/TTY support
  *
  * Copyright (C) 2003 Al Borchers (alborchers@steinerpoint.com)
@@ -76,8 +94,14 @@
  * next layer of buffering.  For TX that's a circular buffer; for RX
  * consider it a NOP.  A third layer is provided by the TTY code.
  */
+#if 0
 #define TX_QUEUE_SIZE		8
 #define TX_BUF_SIZE		4096
+#else
+#define TX_QUEUE_SIZE		64
+#define TX_BUF_SIZE		512
+#endif
+
 #define WRITE_BUF_SIZE		8192		/* TX only */
 
 #define RX_QUEUE_SIZE		8
@@ -371,10 +395,10 @@ __acquires(&port->port_lock)
 		int			len;
 
 		req = list_entry(pool->next, struct usb_request, list);
-		len = gs_send_packet(port, req->buf, TX_BUF_SIZE);
+		len = gs_send_packet(port, req->buf, in->maxpacket);
 		if (len == 0) {
 			/* Queue zero length packet */
-			if (prev_len & (prev_len % in->maxpacket == 0)) {
+			if (prev_len == in->maxpacket) {
 				req->length = 0;
 				list_del(&req->list);
 
@@ -603,6 +627,7 @@ static void gs_read_complete(struct usb_ep *ep, struct usb_request *req)
 	struct gs_port	*port = ep->driver_data;
 	unsigned long flags;
 
+	udelay(200);
 	/* Queue all received data until the tty layer is ready for it. */
 	spin_lock_irqsave(&port->port_lock, flags);
 	list_add_tail(&req->list, &port->read_queue);
@@ -698,8 +723,15 @@ static int gs_start_io(struct gs_port *port)
 	if (status)
 		return status;
 
+#if 0
 	status = gs_alloc_requests(port->port_usb->in, &port->write_pool,
 			TX_QUEUE_SIZE, TX_BUF_SIZE, gs_write_complete);
+#else
+	status = gs_alloc_requests(port->port_usb->in, &port->write_pool,
+			TX_QUEUE_SIZE, port->port_usb->in->maxpacket, gs_write_complete);
+#endif
+
+
 	if (status) {
 		gs_free_requests(ep, head);
 		return status;
@@ -1259,7 +1291,11 @@ static int gs_closed(struct gs_port *port)
 	int cond;
 
 	spin_lock_irq(&port->port_lock);
+#if 0
 	cond = (port->open_count == 0) && !port->openclose;
+#else
+	cond = 1;
+#endif
 	spin_unlock_irq(&port->port_lock);
 	return cond;
 }

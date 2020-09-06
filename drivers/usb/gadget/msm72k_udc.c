@@ -1,4 +1,22 @@
 /*
+ * Certain software is contributed or developed by 
+ * FUJITSU TOSHIBA MOBILE COMMUNICATIONS LIMITED.
+ *
+ * COPYRIGHT(C) FUJITSU TOSHIBA MOBILE COMMUNICATIONS LIMITED 2011
+ *
+ * This software is licensed under the terms of the GNU General Public
+ * License version 2, as published by FSF, and
+ * may be copied, distributed, and modified under those terms.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * This code is based on msm72k_udc.c.
+ * The original copyright and notice are described below.
+ */
+/*
  * Driver for HighSpeed USB Client Controller in MSM7K
  *
  * Copyright (C) 2008 Google, Inc.
@@ -74,6 +92,9 @@ static const char *const ep_name[] = {
 
 /*To release the wakelock from debugfs*/
 static int release_wlocks;
+static int gadget_init_flag = 0;					
+enum chg_type usb_chg_type = USB_CHG_TYPE__INVALID; 
+extern int hsusb_cable_det_notifi_disconnect(void);	
 
 struct msm_request {
 	struct usb_request req;
@@ -125,6 +146,9 @@ struct msm_endpoint {
 
 static void usb_do_work(struct work_struct *w);
 static void usb_do_remote_wakeup(struct work_struct *w);
+
+
+extern	int udc_online_complete;
 
 
 #define USB_STATE_IDLE    0
@@ -218,6 +242,8 @@ static int msm72k_set_halt(struct usb_ep *_ep, int value);
 static void flush_endpoint(struct msm_endpoint *ept);
 static void msm72k_pm_qos_update(int);
 
+extern void gserial_datacable_connected(void);
+
 
 static void msm_hsusb_set_state(enum usb_device_state state)
 {
@@ -308,6 +334,7 @@ static void usb_chg_detect(struct work_struct *w)
 	unsigned long flags;
 	int maxpower;
 
+pr_info("[gadget/msm72k_udc.c] %s()\n", __func__);
 	spin_lock_irqsave(&ui->lock, flags);
 	if (ui->usb_state == USB_STATE_NOTATTACHED) {
 		spin_unlock_irqrestore(&ui->lock, flags);
@@ -315,6 +342,7 @@ static void usb_chg_detect(struct work_struct *w)
 	}
 
 	temp = ui->chg_type = usb_get_chg_type(ui);
+    gserial_datacable_connected();
 	spin_unlock_irqrestore(&ui->lock, flags);
 
 	hsusb_chg_connected(temp);
@@ -331,7 +359,17 @@ static void usb_chg_detect(struct work_struct *w)
 	 * driver will reacquire wakelocks for any sub-sequent usb interrupts.
 	 * */
 	if (temp == USB_CHG_TYPE__WALLCHARGER) {
-		/* Workaround: Reset Link and PHY to avoid of SE1 state */
+		
+		printk("USB_gadget: AC Charger detected %s\n",__func__);
+
+		usb_chg_type= USB_CHG_TYPE__WALLCHARGER;
+		ui->state	= USB_STATE_ONLINE;
+        ui->flags	= USB_FLAG_VBUS_OFFLINE;		
+        schedule_work(&ui->work);
+
+		
+#if 0	
+		
 		otg->reset(ui->xceiv);
 
 		if (!is_b_sess_vld() && is_usb_online(ui)) {
@@ -343,7 +381,7 @@ static void usb_chg_detect(struct work_struct *w)
 		otg_set_suspend(ui->xceiv, 1);
 	}
 
-	/* check if the cable status is changed after set_suspend */
+	
 	if (!is_b_sess_vld() && is_usb_online(ui)) {
 		otg_set_suspend(ui->xceiv, 0);
 		pr_info("%s: Missed BSV interrupt-2\n", __func__);
@@ -354,8 +392,19 @@ static void usb_chg_detect(struct work_struct *w)
 	if (temp == USB_CHG_TYPE__WALLCHARGER) {
 		msm72k_pm_qos_update(0);
 		wake_unlock(&ui->wlock);
+#endif	
 	}
 
+}
+
+int usb_charger_detection_state(void);
+int usb_charger_detection_state()
+{
+         if(usb_chg_type == USB_CHG_TYPE__WALLCHARGER) {
+                return 1;
+        } else {
+                return 0;
+        }
 }
 
 static int usb_ep_get_stall(struct msm_endpoint *ept)
@@ -525,7 +574,7 @@ static void usb_ept_start(struct msm_endpoint *ept)
 
 	while (req) {
 		req->live = 1;
-		/* prepare the transaction descriptor item for the hardware */
+		
 		req->item->info =
 			INFO_BYTES(req->req.length) | INFO_IOC | INFO_ACTIVE;
 		req->item->page0 = req->dma;
@@ -541,19 +590,13 @@ static void usb_ept_start(struct msm_endpoint *ept)
 		req = req->next;
 	}
 
-	/* link the hw queue head to the request's transaction item */
+
 	ept->head->next = ept->req->item_dma;
 	ept->head->info = 0;
 
 	/* flush buffers before priming ept */
 	dma_coherent_pre_ops();
 
-	/* during high throughput testing it is observed that
-	 * ept stat bit is not set even thoguh all the data
-	 * structures are updated properly and ept prime bit
-	 * is set. To workaround the issue, try to check if
-	 * ept stat bit otherwise try to re-prime the ept
-	 */
 	for (i = 0; i < 5; i++) {
 		writel(n, USB_ENDPTPRIME);
 		for (cnt = 0; cnt < 3000; cnt++) {
@@ -856,6 +899,8 @@ static void handle_setup(struct usb_info *ui)
 			writel((ctl.wValue << 25) | (1 << 24), USB_DEVICEADDR);
 			goto ack;
 		} else if (ctl.bRequest == USB_REQ_SET_FEATURE) {
+
+			pr_info("msm72k_udc.c:%s:USB_REQ_SET_FEATURE \n",__func__);
 			switch (ctl.wValue) {
 			case USB_DEVICE_TEST_MODE:
 				switch (ctl.wIndex) {
@@ -868,15 +913,67 @@ static void handle_setup(struct usb_info *ui)
 				}
 				goto stall;
 			case USB_DEVICE_REMOTE_WAKEUP:
+				pr_info("msm72k_udc.c:%s: USB_REQ_SET_FEATURE = USB_DEVICE_REMOTE_WAKEUP = 0x%04x goto ack \n",__func__,ctl.wValue);
 				atomic_set(&ui->remote_wakeup, 1);
-				goto ack;
+				#if 1
+					goto stall;		
+				#else
+					goto ack;
+				#endif
+
+			default :
+				#if 1
+					if (ctl.wValue != USB_ENDPOINT_HALT) {
+						pr_info("msm72k_udc.c:%s: USB_REQ_SET_FEATURE = default !USB_ENDPOINT_HALT = 0x%04x \n",__func__,ctl.wValue);
+						#if 1
+	            	    	goto stall;
+						#endif
+					}
+				#endif
 			}
+
+		#if 0
 		} else if ((ctl.bRequest == USB_REQ_CLEAR_FEATURE) &&
 				(ctl.wValue == USB_DEVICE_REMOTE_WAKEUP)) {
+			pr_info("msm72k_udc.c:%s: USB_REQ_CLEAR_FEATURE : USB_DEVICE_REMOTE_WAKEUP \n",__func__);
 			atomic_set(&ui->remote_wakeup, 0);
 			goto ack;
 		}
+
+		#else
+		} else if ((ctl.bRequest == USB_REQ_CLEAR_FEATURE)) {
+			pr_info("msm72k_udc.c:%s:USB_REQ_CLEAR_FEATURE \n",__func__);
+			switch (ctl.wValue) {
+			case USB_DEVICE_REMOTE_WAKEUP:
+				pr_info("msm72k_udc.c:%s: USB_REQ_CLEAR_FEATURE : USB_DEVICE_REMOTE_WAKEUP goto stall \n",__func__);
+				atomic_set(&ui->remote_wakeup, 0);
+				#if 1
+					goto stall;
+				#endif
+			default :
+				if ((ctl.wValue != USB_ENDPOINT_HALT) || 
+					(ctl.wValue != USB_DEVICE_TEST_MODE)) {
+					pr_info("msm72k_udc.c:%s: USB_REQ_CLEAR_FEATURE default  ctl.wValue = 0x%04x goto stall \n",__func__,ctl.wValue);
+					#if 1
+	                	goto stall;
+					#endif
+				}
+			}
+		}
+		#endif
 	}
+
+
+	if (ctl.bRequest == USB_REQ_GET_DESCRIPTOR ) {
+		pr_info("msm72k_udc.c:%s: USB_REQ_GET_DESCRIPTOR ctl.wValue = 0x%04x\n",__func__,ctl.wValue);
+    	if((ctl.wValue == 0) || ((ctl.wValue >>8 ) > 8)) {
+			pr_info("msm72k_udc.c:%s: USB_REQ_GET_DESCRIPTOR goto stall \n",__func__);
+#if 1
+        	goto stall;
+#endif
+        }
+    }
+
 
 	/* delegate if we get here */
 	if (ui->driver) {
@@ -918,7 +1015,7 @@ static void handle_endpoint(struct usb_info *ui, unsigned bit)
 			break;
 		}
 
-		/* clean speculative fetches on req->item->info */
+		
 		dma_coherent_post_ops();
 		info = req->item->info;
 		/* if the transaction is still in-flight, stop here */
@@ -1168,7 +1265,7 @@ static void usb_reset(struct usb_info *ui)
 
 	atomic_set(&ui->running, 0);
 
-	/* Reset link and phy */
+
 	otg->reset(ui->xceiv);
 
 	/* select DEVICE mode */
@@ -1318,7 +1415,7 @@ static void usb_do_work(struct work_struct *w)
 							"usb:notify offline\n");
 						ui->driver->disconnect(&ui->gadget);
 					}
-					/* power down phy, clock down usb */
+					
 					otg->reset(ui->xceiv);
 					otg_set_suspend(ui->xceiv, 1);
 
@@ -1340,6 +1437,10 @@ static void usb_do_work(struct work_struct *w)
 				dev_info(&ui->pdev->dev,
 					"msm72k_udc: IDLE -> ONLINE\n");
 				usb_reset(ui);
+
+pr_info("[gadget/msm72k_udc.c] call request_irq() in %s()\n", __func__);
+pr_info("[gadget/msm72k_udc.c]     otg->irq=0x%x , ui->pdev->name=%s\n", otg->irq, ui->pdev->name );
+				if (!ui->irq) {
 				ret = request_irq(otg->irq, usb_interrupt,
 							IRQF_SHARED,
 							ui->pdev->name, ui);
@@ -1354,6 +1455,7 @@ static void usb_do_work(struct work_struct *w)
 					break;
 				}
 				ui->irq = otg->irq;
+				}
 				msm72k_pullup_internal(&ui->gadget, 1);
 
 				schedule_delayed_work(
@@ -1387,6 +1489,8 @@ static void usb_do_work(struct work_struct *w)
 
 				dev_info(&ui->pdev->dev,
 					"msm72k_udc: ONLINE -> OFFLINE\n");
+
+pr_info("[gadget/msm72k_udc.c] %s() USB_STATE_ONLINE: call otg_set_suspend(0)\n", __func__);
 				otg_set_suspend(ui->xceiv, 0);
 
 				atomic_set(&ui->running, 0);
@@ -1425,12 +1529,37 @@ static void usb_do_work(struct work_struct *w)
 				switch_set_state(&ui->sdev, 0);
 				/* power down phy, clock down usb */
 				otg->reset(ui->xceiv);
+
+pr_info("[gadget/msm72k_udc.c] %s() USB_STATE_ONLINE: call otg_set_suspend(1)\n", __func__);
 				otg_set_suspend(ui->xceiv, 1);
 
 				ui->state = USB_STATE_OFFLINE;
+#if 0	
 				usb_do_work_check_vbus(ui);
 				msm72k_pm_qos_update(0);
 				wake_unlock(&ui->wlock);
+#else
+				
+				if (temp != USB_CHG_TYPE__WALLCHARGER)
+				{
+				
+					#define WAKE_LOCK_TIME_OUT 500
+					usb_do_work_check_vbus(ui);
+					msm72k_pm_qos_update(0);
+
+					wake_lock_timeout(&ui->wlock,WAKE_LOCK_TIME_OUT);
+				
+					hsusb_cable_det_notifi_disconnect();
+				}
+				else
+				{
+					msm72k_pm_qos_update(0);
+					wake_unlock(&ui->wlock);
+					msm_hsusb_set_vbus_state(0);
+					hsusb_cable_usb_vdd_off();
+				}
+				
+#endif	
 				break;
 			}
 			if (flags & USB_FLAG_SUSPEND) {
@@ -1453,10 +1582,7 @@ static void usb_do_work(struct work_struct *w)
 			if (flags & USB_FLAG_CONFIGURED) {
 				int maxpower = usb_get_max_power(ui);
 
-				/* We may come here even when no configuration
-				 * is selected. Send online/offline event
-				 * accordingly.
-				 */
+				
 				switch_set_state(&ui->sdev,
 						atomic_read(&ui->configured));
 
@@ -1490,10 +1616,16 @@ static void usb_do_work(struct work_struct *w)
 					"msm72k_udc: OFFLINE -> ONLINE\n");
 
 				msm72k_pm_qos_update(1);
+
+pr_info("[gadget/msm72k_udc.c] %s() USB_STATE_OFFLINE: call otg_set_suspend\n", __func__);
 				otg_set_suspend(ui->xceiv, 0);
 				usb_reset(ui);
 				ui->state = USB_STATE_ONLINE;
 				usb_do_work_check_vbus(ui);
+
+pr_info("[gadget/msm72k_udc.c] call request_irq() in %s()\n", __func__);
+pr_info("[gadget/msm72k_udc.c]     otg->irq=0x%x , ui->pdev->name=%s\n", otg->irq, ui->pdev->name );
+				if (!ui->irq) {
 				ret = request_irq(otg->irq, usb_interrupt,
 							IRQF_SHARED,
 							ui->pdev->name, ui);
@@ -1507,12 +1639,16 @@ static void usb_do_work(struct work_struct *w)
 					break;
 				}
 				ui->irq = otg->irq;
+				}
 				enable_irq_wake(otg->irq);
 				msm72k_pullup_internal(&ui->gadget, 1);
 
 				schedule_delayed_work(
 						&ui->chg_det,
 						USB_CHG_DET_DELAY);
+						
+				udc_online_complete = 0;
+
 			}
 			break;
 		}
@@ -1542,9 +1678,13 @@ void msm_hsusb_set_vbus_state(int online)
 	if (online) {
 		ui->usb_state = USB_STATE_POWERED;
 		ui->flags |= USB_FLAG_VBUS_ONLINE;
+
+pr_info("[gadget/msm72k_udc.c] usb_state=USB_STATE_POWERED ui->flags=USB_FLAG_VBUS_ONLINE in %s()\n", __func__);
 	} else {
 		ui->usb_state = USB_STATE_NOTATTACHED;
 		ui->flags |= USB_FLAG_VBUS_OFFLINE;
+
+pr_info("[gadget/msm72k_udc.c] usb_state=USB_STATE_NOTATTACHED ui->flags=USB_FLAG_VBUS_OFFLINE in %s()\n", __func__);
 	}
 	schedule_work(&ui->work);
 out:
@@ -1948,6 +2088,13 @@ static int msm72k_udc_vbus_session(struct usb_gadget *_gadget, int is_active)
 	return 0;
 }
 
+#if 1	
+static int msm72k_udc_is_host(void)
+{
+	struct usb_info *ui = the_usb_info;
+	return ((OTGSC_ID & readl(USB_OTGSC)) ? 0 : 1);
+}
+#endif	
 /* SW workarounds
 Issue #1	- USB Spoof Disconnect Failure
 Symptom	- Writing 0 to run/stop bit of USBCMD doesn't cause disconnect
@@ -1967,7 +2114,7 @@ static int msm72k_pullup_internal(struct usb_gadget *_gadget, int is_active)
 		spin_unlock_irqrestore(&ui->lock, flags);
 	} else {
 		writel(readl(USB_USBCMD) & ~USBCMD_RS, USB_USBCMD);
-		/* S/W workaround, Issue#1 */
+		
 		ulpi_write(ui, 0x48, 0x04);
 	}
 
@@ -1978,10 +2125,6 @@ static int msm72k_pullup(struct usb_gadget *_gadget, int is_active)
 {
 	struct usb_info *ui = container_of(_gadget, struct usb_info, gadget);
 
-	/* Reset PHY before enabling pull-up to workaround
-	 * PHY stuck issue during mutiple times of function
-	 * enable/disable.
-	 */
 	if (is_active)
 		usb_reset(ui);
 
@@ -1994,6 +2137,8 @@ static int msm72k_wakeup(struct usb_gadget *_gadget)
 {
 	struct usb_info *ui = container_of(_gadget, struct usb_info, gadget);
 	struct msm_otg *otg = to_msm_otg(ui->xceiv);
+
+pr_info("[gadget/msm72k_udc.c] %s()\n", __func__);
 
 	if (!atomic_read(&ui->remote_wakeup)) {
 		dev_err(&ui->pdev->dev,
@@ -2066,7 +2211,8 @@ static const struct usb_gadget_ops msm72k_ops = {
 	.vbus_session	= msm72k_udc_vbus_session,
 	.vbus_draw	= msm72k_udc_vbus_draw,
 	.pullup		= msm72k_pullup,
-	.wakeup		= msm72k_wakeup,
+			 
+	.wakeup		= NULL,							 
 	.set_selfpowered = msm72k_set_selfpowered,
 };
 
@@ -2157,6 +2303,8 @@ static int msm72k_probe(struct platform_device *pdev)
 	struct msm_otg *otg;
 	int retval;
 
+pr_info("[gadget/msm72k_udc.c] %s()\n", __func__);
+
 	dev_dbg(&pdev->dev, "msm72k_probe\n");
 	ui = kzalloc(sizeof(struct usb_info), GFP_KERNEL);
 	if (!ui)
@@ -2226,6 +2374,7 @@ static int msm72k_probe(struct platform_device *pdev)
 		return usb_free(ui, retval);
 	}
 
+	hsusb_cable_det_notifi_initialize_complete(0x0000);	
 	return 0;
 }
 
@@ -2300,7 +2449,16 @@ int usb_gadget_register_driver(struct usb_gadget_driver *driver)
 		dev_err(&ui->pdev->dev,
 			"failed to create sysfs entry(chg_current):"
 			"err:(%d)\n", retval);
+
+#if 0
 	usb_start(ui);
+#else
+	if (!msm72k_udc_is_host() || gadget_init_flag == 0) {
+		usb_start(ui);
+		gadget_init_flag = 1;
+	}
+#endif
+
 
 	return 0;
 
@@ -2320,15 +2478,30 @@ int usb_gadget_unregister_driver(struct usb_gadget_driver *driver)
 	if (!driver || driver != dev->driver || !driver->unbind)
 		return -EINVAL;
 
+#if 1	
+
+	if( !msm72k_udc_is_host())
+	{
+		msm72k_pullup_internal(&dev->gadget, 0);
+
+		if (dev->irq) {
+			free_irq(dev->irq, dev);
+			dev->irq = 0;
+		}
+		dev->state = USB_STATE_IDLE;
+		atomic_set(&dev->configured, 0);
+		switch_set_state(&dev->sdev, 0);
+	}
+#else	
 	msm72k_pullup_internal(&dev->gadget, 0);
 	if (dev->irq) {
 		free_irq(dev->irq, dev);
 		dev->irq = 0;
 	}
-
 	dev->state = USB_STATE_IDLE;
 	atomic_set(&dev->configured, 0);
 	switch_set_state(&dev->sdev, 0);
+#endif	
 	device_remove_file(&dev->gadget.dev, &dev_attr_usb_state);
 	device_remove_file(&dev->gadget.dev, &dev_attr_usb_speed);
 	device_remove_file(&dev->gadget.dev, &dev_attr_chg_type);

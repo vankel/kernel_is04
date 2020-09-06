@@ -1,4 +1,22 @@
 /*
+ * Certain software is contributed or developed by 
+ * FUJITSU TOSHIBA MOBILE COMMUNICATIONS LIMITED.
+ *
+ * COPYRIGHT(C) FUJITSU TOSHIBA MOBILE COMMUNICATIONS LIMITED 2011
+ *
+ * This software is licensed under the terms of the GNU General Public
+ * License version 2, as published by FSF, and
+ * may be copied, distributed, and modified under those terms.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * This code is based on devices-qsd8x50.c.
+ * The original copyright and notice are described below.
+ */
+/*
  * Copyright (C) 2008 Google, Inc.
  * Copyright (c) 2008-2010, Code Aurora Forum. All rights reserved.
  *
@@ -486,7 +504,7 @@ static struct resource resources_sdc4[] = {
 };
 
 struct platform_device msm_device_sdc1 = {
-	.name		= "msm_sdcc",
+	.name		= "ext_sdcc",
 	.id		= 1,
 	.num_resources	= ARRAY_SIZE(resources_sdc1),
 	.resource	= resources_sdc1,

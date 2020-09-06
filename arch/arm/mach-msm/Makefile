@@ -1,3 +1,6 @@
+ifdef CONFIG_MACH_QSD8X50_TG03
+	KBUILD_CFLAGS += -Idrivers/paco/include
+endif
 obj-y += io.o dma.o memory.o
 obj-y += clock.o
 obj-y += modem_notifier.o
@@ -102,6 +105,7 @@ obj-$(CONFIG_MACH_QSD8X50_FFA) += board-qsd8x50.o
 #obj-$(CONFIG_MACH_QSD8X50_COMET) += board-comet.o
 obj-$(CONFIG_MACH_QSD8X50A_SURF) += board-qsd8x50.o
 obj-$(CONFIG_MACH_QSD8X50A_FFA) += board-qsd8x50.o
+obj-$(CONFIG_MACH_QSD8X50_TG03) += board-tg03.o msm_vibrator.o board-tg03-usb.o
 obj-$(CONFIG_MACH_QSD8X50A_ST1_5) += board-qsd8x50a-st1x.o
 obj-$(CONFIG_ARCH_MSM8X60) += devices-msm8x60.o clock-8x60.o acpuclock-8x60.o
 obj-$(CONFIG_ARCH_MSM8X60) += clock-rpm.o spm.o restart.o

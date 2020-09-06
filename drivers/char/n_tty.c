@@ -93,7 +93,12 @@ static inline int tty_put_user(struct tty_struct *tty, unsigned char x,
 static void n_tty_set_room(struct tty_struct *tty)
 {
 	/* tty->read_cnt is not read locked ? */
-	int	left = N_TTY_BUF_SIZE - tty->read_cnt - 1;
+	unsigned long flags;
+	int	left;
+
+	spin_lock_irqsave(&tty->read_lock, flags);
+	
+        left = N_TTY_BUF_SIZE - tty->read_cnt - 1;
 
 	/*
 	 * If we are doing input canonicalization, and there are no
@@ -104,6 +109,7 @@ static void n_tty_set_room(struct tty_struct *tty)
 	if (left <= 0)
 		left = tty->icanon && !tty->canon_data;
 	tty->receive_room = left;
+	spin_unlock_irqrestore(&tty->read_lock, flags);
 }
 
 static void put_tty_queue_nolock(unsigned char c, struct tty_struct *tty)

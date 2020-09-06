@@ -1,3 +1,22 @@
+/*
+
+* Certain software is contributed or developed by TOSHIBA CORPORATION.
+*
+* Copyright (C) 2010 TOSHIBA CORPORATION All rights reserved.
+*
+* This software is licensed under the terms of the GNU General Public
+* License version 2, as published by FSF, and
+* may be copied, distributed, and modified under those terms.
+*
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+*
+* This code is based on msm_battery.c.
+* The original copyright and notice are described below.
+*/
+
 /* Copyright (c) 2009-2010, Code Aurora Forum. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
@@ -75,12 +94,17 @@
 #define RPC_TYPE_REPLY   1
 #define RPC_REQ_REPLY_COMMON_HEADER_SIZE   (3 * sizeof(uint32_t))
 
+#define BATT_UPDATE_TIMEOUT	(2000)
 
 #if DEBUG
 #define DBG_LIMIT(x...) do {if (printk_ratelimit()) pr_debug(x); } while (0)
 #else
 #define DBG_LIMIT(x...) do {} while (0)
 #endif
+
+static DEFINE_MUTEX(msm_mutex);
+static struct work_struct timer_work;
+static struct timer_list my_timer;
 
 enum {
 	BATTERY_REGISTRATION_SUCCESSFUL = 0,
@@ -321,6 +345,7 @@ static enum power_supply_property msm_batt_power_props[] = {
 	POWER_SUPPLY_PROP_VOLTAGE_MIN_DESIGN,
 	POWER_SUPPLY_PROP_VOLTAGE_NOW,
 	POWER_SUPPLY_PROP_CAPACITY,
+	POWER_SUPPLY_PROP_TEMP,
 };
 
 static int msm_batt_power_get_property(struct power_supply *psy,
@@ -351,6 +376,9 @@ static int msm_batt_power_get_property(struct power_supply *psy,
 		break;
 	case POWER_SUPPLY_PROP_CAPACITY:
 		val->intval = msm_batt_info.batt_capacity;
+		break;	
+	case POWER_SUPPLY_PROP_TEMP:
+		val->intval = msm_batt_info.battery_temp*10;
 		break;
 	default:
 		return -EINVAL;
@@ -633,11 +661,19 @@ static void msm_batt_update_psy_status(void)
 	msm_batt_info.battery_temp 	= battery_temp;
 
 	if (msm_batt_info.battery_voltage != battery_voltage) {
+		mutex_lock(&msm_mutex);
 		msm_batt_info.battery_voltage  	= battery_voltage;
 		msm_batt_info.batt_capacity =
 			msm_batt_info.calculate_capacity(battery_voltage);
+		mutex_unlock(&msm_mutex);
 		DBG_LIMIT("BATT: voltage = %u mV [capacity = %d%%]\n",
 			 battery_voltage, msm_batt_info.batt_capacity);
+
+		if (msm_batt_info.batt_status == POWER_SUPPLY_STATUS_NOT_CHARGING) {
+			if (msm_batt_info.batt_capacity == 100) {
+				msm_batt_info.batt_status = POWER_SUPPLY_STATUS_FULL;
+			}
+		}
 
 		if (!supp)
 			supp = msm_batt_info.current_ps;
@@ -646,7 +682,9 @@ static void msm_batt_update_psy_status(void)
 	if (supp) {
 		msm_batt_info.current_ps = supp;
 		DBG_LIMIT("BATT: Supply = %s\n", supp->name);
+	        mutex_lock(&msm_mutex);
 		power_supply_changed(supp);
+	        mutex_unlock(&msm_mutex);
 	}
 }
 
@@ -758,9 +796,14 @@ void msm_batt_early_suspend(struct early_suspend *h)
 	pr_debug("%s: enter\n", __func__);
 
 	if (msm_batt_info.batt_handle != INVALID_BATT_HANDLE) {
+                /*
 		rc = msm_batt_modify_client(msm_batt_info.batt_handle,
 				BATTERY_LOW, BATTERY_VOLTAGE_BELOW_THIS_LEVEL,
 				BATTERY_CB_ID_LOW_VOL, BATTERY_LOW);
+                */
+        	rc = msm_batt_modify_client(msm_batt_info.batt_handle,
+                	BATTERY_LOW, BATTERY_ALL_ACTIVITY,
+                	BATTERY_CB_ID_ALL_ACTIV, BATTERY_ALL_ACTIVITY);
 
 		if (rc < 0) {
 			pr_err("%s: msm_batt_modify_client. rc=%d\n",
@@ -1365,6 +1408,50 @@ static struct platform_driver msm_batt_driver = {
 		   },
 };
 
+static void my_timer_callback( unsigned long data )
+{
+        schedule_work(&timer_work);
+}
+
+static void get_battery_voltage(struct work_struct *work)
+{
+        u32 battery_voltage;
+        struct  power_supply    *supp;
+        battery_voltage = msm_batt_get_vbatt_voltage();
+        mutex_lock(&msm_mutex);
+        if (msm_batt_info.calculate_capacity)
+          msm_batt_info.batt_capacity = msm_batt_info.calculate_capacity(battery_voltage);
+	switch(msm_batt_info.batt_status)
+	{
+		case POWER_SUPPLY_STATUS_CHARGING:
+			break;
+		case POWER_SUPPLY_STATUS_NOT_CHARGING:
+			if(msm_batt_info.batt_capacity == 100)
+				msm_batt_info.batt_status = POWER_SUPPLY_STATUS_FULL;
+			break;
+		case POWER_SUPPLY_STATUS_FULL:
+			if(msm_batt_info.batt_capacity < 100)
+			{
+				/* If Charger is connected Make status as Charging other wise make it Not Charging */
+				if ( msm_batt_info.charger_status == CHARGER_STATUS_GOOD || 
+				     msm_batt_info.charger_status == CHARGER_STATUS_WEAK) 
+				{
+				        /*if charger is connected and battery goes down*/
+                        		if (msm_batt_info.current_chg_source)
+						 msm_batt_info.batt_status = POWER_SUPPLY_STATUS_CHARGING;
+				}
+				else /* If charger is not connected */
+					 msm_batt_info.batt_status = POWER_SUPPLY_STATUS_NOT_CHARGING;
+			}
+			break;
+	}
+        supp = &msm_psy_batt;
+        power_supply_changed(supp);
+        mutex_unlock(&msm_mutex);
+		my_timer.expires = jiffies + msecs_to_jiffies(BATT_UPDATE_TIMEOUT);
+        add_timer(&my_timer);
+}
+
 static int __devinit msm_batt_init_rpc(void)
 {
 	int rc;
@@ -1435,6 +1522,10 @@ static int __devinit msm_batt_init_rpc(void)
 		pr_err("%s: FAIL: platform_driver_register. rc = %d\n",
 		       __func__, rc);
 
+        INIT_WORK(&timer_work, get_battery_voltage);
+        setup_timer( &my_timer, my_timer_callback, 0 );
+        mod_timer( &my_timer, jiffies + msecs_to_jiffies(BATT_UPDATE_TIMEOUT));
+
 	return rc;
 }
 
@@ -1461,6 +1552,7 @@ static int __init msm_batt_init(void)
 
 static void __exit msm_batt_exit(void)
 {
+        del_timer( &my_timer );
 	platform_driver_unregister(&msm_batt_driver);
 }
 

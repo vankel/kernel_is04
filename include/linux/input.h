@@ -377,6 +377,12 @@ struct input_absinfo {
 
 #define KEY_WIMAX		246
 
+#define KEY_CHG_ST_NONE 	341
+#define KEY_CHG_ST_OVP  	342
+#define KEY_CHG_ST_OVC  	343
+#define KEY_CHG_ST_OVD  	344
+#define KEY_CHG_ST_EXP  	345
+
 /* Range 248 - 255 is reserved for special needs of AT keyboard driver */
 
 #define BTN_MISC		0x100
@@ -774,6 +780,13 @@ struct input_absinfo {
 #define FF_STATUS_STOPPED	0x00
 #define FF_STATUS_PLAYING	0x01
 #define FF_STATUS_MAX		0x01
+
+/* adding key codes for battery abnormal events*/
+#define KEY_CHG_ST_NONE 341
+#define KEY_CHG_ST_OVP  342
+#define KEY_CHG_ST_OVC  343
+#define KEY_CHG_ST_OVD  344
+#define KEY_CHG_ST_EXP  345
 
 /*
  * Structures used in ioctls to upload effects to a device

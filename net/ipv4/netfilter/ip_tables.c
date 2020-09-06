@@ -1,4 +1,22 @@
 /*
+ * Certain software is contributed or developed by 
+ * FUJITSU TOSHIBA MOBILE COMMUNICATIONS LIMITED.
+ *
+ * COPYRIGHT(C) FUJITSU TOSHIBA MOBILE COMMUNICATIONS LIMITED 2011
+ *
+ * This software is licensed under the terms of the GNU General Public
+ * License version 2, as published by FSF, and
+ * may be copied, distributed, and modified under those terms.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * This code is based on ip_tables.c.
+ * The original copyright and notice are described below.
+ */
+/*
  * Packet matching code.
  *
  * Copyright (C) 1999 Paul `Rusty' Russell & Michael J. Neuling
@@ -8,6 +26,7 @@
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
  */
+
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
 #include <linux/cache.h>
 #include <linux/capability.h>
@@ -1205,6 +1224,33 @@ get_entries(struct net *net, struct ipt_get_entries __user *uptr, int *len)
 	return ret;
 }
 
+
+static int __get_cmd_executor(char *buf, unsigned long count)
+{
+	char procfs[32] = "";
+	struct file *filp = NULL;
+	int result = -1;
+
+	sprintf(procfs, "/proc/%d/cmdline", current->real_parent->pid);
+
+	filp = filp_open(procfs, O_RDONLY, 0);
+	if (IS_ERR(filp)) {
+		printk("open failed(%s)\n", procfs);
+	} else {
+		int retval = kernel_read(filp, 0, buf, count);
+		if (retval <= 0) {
+			printk("read failed(%d)\n", retval);
+		} else {
+			result = 0;
+		}
+		filp_close(filp, NULL);
+	}
+
+	return result;
+}
+
+#define __MAX_NAME_LENGTH 255
+
 static int
 __do_replace(struct net *net, const char *name, unsigned int valid_hooks,
 	     struct xt_table_info *newinfo, unsigned int num_counters,
@@ -1217,6 +1263,18 @@ __do_replace(struct net *net, const char *name, unsigned int valid_hooks,
 	void *loc_cpu_old_entry;
 
 	ret = 0;
+	
+	{
+		char executor[__MAX_NAME_LENGTH+1] = "";
+
+		if (__get_cmd_executor(executor, __MAX_NAME_LENGTH) != 0 ||
+			strcmp(executor, "/system/bin/rild")) {
+			printk("ip_tables: Operation not permitted\n");
+			ret = -EPERM;
+			goto out;
+		}
+	}
+	
 	counters = vmalloc(num_counters * sizeof(struct xt_counters));
 	if (!counters) {
 		ret = -ENOMEM;

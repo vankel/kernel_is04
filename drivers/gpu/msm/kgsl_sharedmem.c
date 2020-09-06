@@ -1,3 +1,21 @@
+/*
+ * Certain software is contributed or developed by 
+ * FUJITSU TOSHIBA MOBILE COMMUNICATIONS LIMITED.
+ *
+ * COPYRIGHT(C) FUJITSU TOSHIBA MOBILE COMMUNICATIONS LIMITED 2011
+ *
+ * This software is licensed under the terms of the GNU General Public
+ * License version 2, as published by FSF, and
+ * may be copied, distributed, and modified under those terms.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * This code is based on kgsl_sharedmem.c.
+ * The original copyright and notice are described below.
+ */
 /* Copyright (c) 2002,2007-2010, Code Aurora Forum. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
@@ -223,9 +241,17 @@ kgsl_sharedmem_free(struct kgsl_memdesc *memdesc)
 
 	BUG_ON(memdesc == NULL);
 	BUG_ON(memdesc->size <= 0);
-	BUG_ON(shmem->physbase > memdesc->physaddr);
-	BUG_ON((shmem->physbase + shmem->size)
-	       < (memdesc->physaddr + memdesc->size));
+//	BUG_ON(shmem->physbase > memdesc->physaddr);
+//	BUG_ON((shmem->physbase + shmem->size)
+//	       < (memdesc->physaddr + memdesc->size));
+
+    if(shmem->physbase > memdesc->physaddr)
+        KGSL_MEM_FATAL("shmem->physbase=%p, memdesc->physaddr=%p\n",
+    shmem->physbase, memdesc->physaddr);
+
+    if((shmem->physbase + shmem->size) < (memdesc->physaddr + memdesc->size))
+        KGSL_MEM_FATAL("shmem->(physbase=%p, size=%d), memdesc->(physaddr=%p, size=%d)\n", shmem->physbase, shmem->size, memdesc->physaddr ,
+    memdesc->size);
 
 	if (memdesc->priv & KGSL_MEMFLAGS_CONPHYS)
 		dma_free_coherent(NULL, memdesc->size, memdesc->hostptr,

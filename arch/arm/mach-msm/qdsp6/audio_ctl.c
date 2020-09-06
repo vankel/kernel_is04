@@ -1,4 +1,21 @@
 /*
+ * Certain software is contributed or developed by TOSHIBA CORPORATION.
+ *
+ * Copyright (C) 2010 TOSHIBA CORPORATION All rights reserved.
+ *
+ * This software is licensed under the terms of the GNU General Public
+ * License version 2, as published by FSF, and
+ * may be copied, distributed, and modified under those terms.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * This code is based on audio_ctl.c.
+ * The original copyright and notice are described below.
+ */
+/*
  * Copyright (C) 2009 Google, Inc.
  * Copyright (C) 2009 HTC Corporation
  *
@@ -131,6 +148,11 @@ static int q6_ioctl(struct inode *inode, struct file *file,
 		break;
 	case AUDIO_REINIT_ACDB:
 		rc = 0;
+		break;
+	case AUDIO_SET_CONFIG:
+		rc = copy_from_user(&id, (void *)arg, sizeof(id));
+		if (!rc)
+			rc = q6audio_power_ctrl(id[0]);
 		break;
 	default:
 		rc = -EINVAL;

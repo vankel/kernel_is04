@@ -1,4 +1,22 @@
 /*
+ * Certain software is contributed or developed by 
+ * FUJITSU TOSHIBA MOBILE COMMUNICATIONS LIMITED.
+ *
+ * COPYRIGHT(C) FUJITSU TOSHIBA MOBILE COMMUNICATIONS LIMITED 2011
+ *
+ * This software is licensed under the terms of the GNU General Public
+ * License version 2, as published by FSF, and
+ * may be copied, distributed, and modified under those terms.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * This code is based on android.c.
+ * The original copyright and notice are described below.
+ */
+/*
  * Gadget Driver for Android
  *
  * Copyright (C) 2008 Google, Inc.
@@ -16,8 +34,7 @@
  *
  */
 
-/* #define DEBUG */
-/* #define VERBOSE_DEBUG */
+
 
 #include <linux/init.h>
 #include <linux/module.h>
@@ -34,6 +51,7 @@
 #include <linux/usb/ch9.h>
 #include <linux/usb/composite.h>
 #include <linux/usb/gadget.h>
+#include <linux/cryptohash.h>
 #if defined(CONFIG_USB_ANDROID_CDC_ECM) || defined(CONFIG_USB_ANDROID_RNDIS)
 #include "u_ether.h"
 #endif
@@ -50,13 +68,7 @@
 
 #include "gadget_chips.h"
 
-/*
- * Kbuild is not very cooperative with respect to linking separately
- * compiled library objects into one module.  So for now we won't use
- * separate compilation ... ensuring init/exit sections work to shrink
- * the runtime footprint, and giving us at least some parts of what
- * a "gcc --combine ... part1.c part2.c part3.c ... " build would.
- */
+
 #include "usbstring.c"
 #include "config.c"
 #include "epautoconf.c"
@@ -67,17 +79,32 @@ MODULE_DESCRIPTION("Android Composite USB Driver");
 MODULE_LICENSE("GPL");
 MODULE_VERSION("1.0");
 
-/* product id */
+int udc_online_complete = 0;
+
+
+
+
+#define TSB_PRODUCT_ID      0x0D8D
+#define LSM_PRODUCT_ID      0x0D8C
+
+#if 0
 static u16 product_id;
+#else
+static u16 product_id = TSB_PRODUCT_ID;
+#endif
+
 static int android_set_pid(const char *val, struct kernel_param *kp);
 static int android_get_pid(char *buffer, struct kernel_param *kp);
 module_param_call(product_id, android_set_pid, android_get_pid,
 					&product_id, 0664);
 MODULE_PARM_DESC(product_id, "USB device product id");
 
-/* serial number */
+
 #define MAX_SERIAL_LEN 256
 static char serial_number[MAX_SERIAL_LEN] = "1234567890ABCDEF";
+
+static char global_serial_number[MAX_SERIAL_LEN] = {0};
+
 static struct kparam_string kps = {
 	.string			= serial_number,
 	.maxlen			= MAX_SERIAL_LEN,
@@ -87,12 +114,60 @@ module_param_call(serial_number, android_set_sn, param_get_string,
 						&kps, 0664);
 MODULE_PARM_DESC(serial_number, "SerialNumber string");
 
+
+static unsigned int  boot_set_pid = 0;
+
+
+#define ENABLE_PWSTRING_IF
+#define NV_GPRS_ANITE_GCF_I     947
+#define NV_OPEFLAG_I            10035
+
+#define PID__ADB_MSC____________    0x0D85
+#define PID__ADB_MSC_____MDM____    0x9002
+#define PID__ADB_MSC_DIG_____GPS    0x9003
+#define PID__ADB_MSC_DIG_MDM_GPS    0x9018
+
+#define PID__ADB_MSC_DIG_MDM_GPS_LSM    0x9018
+
+
+
+static int android_set_serialnumber(const char *kmessage);
+
+extern int msm_usb_read_nvitem(unsigned int id, unsigned short *data);
+extern int msm_usb_write_nvitem(unsigned int id, unsigned short *data);
+extern int store_state;
+
+#ifdef ENABLE_PWSTRING_IF
+static char password_string[MAX_SERIAL_LEN] = {0};
+
+static unsigned int  desired_password[5] = {0x4d347823,0x685235e1,0x99803e04,0xcd56a201,0x5c5ec4f2};
+
+static unsigned int  output_password[5] = {0}; 
+
+static struct kparam_string kps_pass = {
+        .string                 = password_string,
+        .maxlen                 = MAX_SERIAL_LEN,
+};
+
+static int android_set_password(const char *kmessage, struct kernel_param *kp);
+static int android_get_password(unsigned int *buffer, struct kernel_param *kp);
+
+module_param_call(password_string, android_set_password, android_get_password,
+                        &kps_pass, 0664);
+
+MODULE_PARM_DESC(password_string, "PasswordNumber string");
+#endif
+
+
+extern int for_serial_notification(void);
+
+
 static const char longname[] = "Gadget Android";
 #if defined(CONFIG_USB_ANDROID_CDC_ECM) || defined(CONFIG_USB_ANDROID_RNDIS)
 static u8 hostaddr[ETH_ALEN];
 #endif
 
-/* Default vendor ID, overridden by platform data */
+
 #define VENDOR_ID		0x18D1
 
 struct android_dev {
@@ -109,22 +184,23 @@ struct android_dev {
 
 static struct android_dev *_android_dev;
 
-/* string IDs are assigned dynamically */
+
 
 #define STRING_MANUFACTURER_IDX		0
 #define STRING_PRODUCT_IDX		1
 #define STRING_SERIAL_IDX		2
 
-/* String Table */
+
 static struct usb_string strings_dev[] = {
-	/* These dummy values should be overridden by platform data */
+
 	[STRING_MANUFACTURER_IDX].s = "Android",
 	[STRING_PRODUCT_IDX].s = "Android",
-	{  }			/* end of list */
+	[STRING_SERIAL_IDX].s = "0123456789ABCDEF",	
+	{  }			
 };
 
 static struct usb_gadget_strings stringtab_dev = {
-	.language	= 0x0409,	/* en-us */
+	.language	= 0x0409,	
 	.strings	= strings_dev,
 };
 
@@ -173,6 +249,9 @@ android_func_attr(cdc_ecm, ANDROID_CDC_ECM);
 android_func_attr(rmnet, ANDROID_RMNET);
 android_func_attr(rndis, ANDROID_RNDIS);
 
+android_func_attr(atport, ANDROID_GENERIC_ATPORT);
+
+
 static struct attribute *android_func_attrs[] = {
 	&dev_attr_adb.attr,
 	&dev_attr_mass_storage.attr,
@@ -184,6 +263,9 @@ static struct attribute *android_func_attrs[] = {
 	&dev_attr_cdc_ecm.attr,
 	&dev_attr_rmnet.attr,
 	&dev_attr_rndis.attr,
+
+	&dev_attr_atport.attr,
+
 	NULL,
 };
 
@@ -231,15 +313,28 @@ static int  android_bind_config(struct usb_configuration *c)
 #endif
 #ifdef CONFIG_USB_F_SERIAL
 		case ANDROID_GENERIC_MODEM:
-			ret = gser_bind_config(c, 0);
+
+
+			ret = gser_bind_config(c, 1);
+
 			if (ret)
 				return ret;
 			break;
 		case ANDROID_GENERIC_NMEA:
-			ret = gser_bind_config(c, 1);
+
+
+			ret = gser_bind_config(c, 2);
+
 			if (ret)
 				return ret;
 			break;
+
+		case ANDROID_GENERIC_ATPORT:
+			ret = lismo_bind_config(c, 0);
+			if (ret)
+				return ret;
+			break;
+
 #endif
 #ifdef CONFIG_USB_ANDROID_CDC_ECM
 		case ANDROID_CDC_ECM:
@@ -286,6 +381,9 @@ static int get_num_of_serial_ports(void)
 		case ANDROID_ACM_NMEA:
 		case ANDROID_GENERIC_MODEM:
 		case ANDROID_GENERIC_NMEA:
+
+		case ANDROID_GENERIC_ATPORT:
+
 			ports++;
 		}
 		n = n >> 4;
@@ -340,9 +438,7 @@ static int  android_bind(struct usb_composite_dev *cdev)
 
 	pr_debug("android_bind\n");
 
-	/* Allocate string descriptor numbers ... note that string
-	 * contents can be overridden by the composite_dev glue.
-	 */
+
 	id = usb_string_id(cdev);
 	if (id < 0)
 		return id;
@@ -362,9 +458,7 @@ static int  android_bind(struct usb_composite_dev *cdev)
 	device_desc.iSerialNumber = id;
 
 	device_desc.idProduct = __constant_cpu_to_le16(product_id);
-	/* Supporting remote wakeup for mass storage only function
-	 * does n't make sense, since there are no notifications that
-	 * can be sent from mass storage during suspend */
+
 	if ((gadget->ops->wakeup) && (dev->functions != ANDROID_MSC))
 		android_config_driver.bmAttributes |= USB_CONFIG_ATT_WAKEUP;
 	else
@@ -372,7 +466,7 @@ static int  android_bind(struct usb_composite_dev *cdev)
 
 	if (dev->pdata->self_powered && !usb_gadget_set_selfpowered(gadget)) {
 		android_config_driver.bmAttributes |= USB_CONFIG_ATT_SELFPOWER;
-		android_config_driver.bMaxPower	= 0x32; /* 100 mA */
+		android_config_driver.bMaxPower	= 0x32; 
 	}
 	dev->cdev = cdev;
 	pr_debug("android_bind assigned dev->cdev\n");
@@ -385,14 +479,9 @@ static int  android_bind(struct usb_composite_dev *cdev)
 			return ret;
 	}
 
-	/* Android user space allows USB tethering only when usb0 is listed
-	 * in network interfaces. Setup network link though RNDIS/CDC-ECM
-	 * is not listed in current composition. Network links is not setup
-	 * for every composition switch. It is setup one time and teared down
-	 * during module removal.
-	 */
+
 #if defined(CONFIG_USB_ANDROID_CDC_ECM) || defined(CONFIG_USB_ANDROID_RNDIS)
-	/* set up network link layer */
+	
 	ret = gether_setup(cdev->gadget, hostaddr);
 	if (ret && (ret != -EBUSY)) {
 		gserial_cleanup();
@@ -400,7 +489,7 @@ static int  android_bind(struct usb_composite_dev *cdev)
 	}
 #endif
 
-	/* register our configuration */
+	
 	ret = usb_add_config(cdev, &android_config_driver);
 	if (ret) {
 		pr_err("usb_add_config failed\n");
@@ -411,13 +500,6 @@ static int  android_bind(struct usb_composite_dev *cdev)
 	if (gcnum >= 0)
 		device_desc.bcdDevice = cpu_to_le16(0x0200 + gcnum);
 	else {
-		/* gadget zero is so simple (for now, no altsettings) that
-		 * it SHOULD NOT have problems with bulk-capable hardware.
-		 * so just warn about unrcognized controllers -- don't panic.
-		 *
-		 * things like configuration and altsetting numbering
-		 * can need hardware-specific attention though.
-		 */
 		pr_warning("%s: controller '%s' not recognized\n",
 			longname, gadget->name);
 		device_desc.bcdDevice = __constant_cpu_to_le16(0x9999);
@@ -466,20 +548,45 @@ static int android_switch_composition(u16 pid)
 	struct usb_composition *func;
 	int ret;
 
-	/* Validate the prodcut id */
+	int len = 0;
+	char temp_serial_number_default[MAX_SERIAL_LEN] = {0};
+	char temp_serial_number[MAX_SERIAL_LEN + 1] = {0};
+	strlcpy(temp_serial_number_default, global_serial_number, MAX_SERIAL_LEN);
+
+
+	
 	func = android_validate_product_id(pid);
 	if (!func) {
 		pr_err("%s: invalid product id %x\n", __func__, pid);
 		return -EINVAL;
 	}
 
-	/* Honour adb users */
+	
 	if (dev->adb_enabled) {
 		product_id = func->adb_product_id;
 		dev->functions = func->adb_functions;
+
+        android_set_serialnumber(temp_serial_number_default);
+
 	} else {
 		product_id = func->product_id;
 		dev->functions = func->functions;
+
+        if (product_id == TSB_PRODUCT_ID) {
+			strlcpy(temp_serial_number, global_serial_number, MAX_SERIAL_LEN);
+			len = strlen(temp_serial_number);
+
+			if (len <= (MAX_SERIAL_LEN - 2)) {
+			    
+				temp_serial_number[len] = '0';
+				temp_serial_number[len + 1] = '\0';
+			}
+			android_set_serialnumber(temp_serial_number);
+		}
+		else {
+            android_set_serialnumber(temp_serial_number_default);
+		}
+
 	}
 
 	usb_composite_unregister(&android_usb_driver);
@@ -512,6 +619,178 @@ static struct attribute_group android_attr_grp = {
 	.attrs = android_attrs,
 };
 
+
+#ifdef ENABLE_PWSTRING_IF
+static void android_hash_password(char *kmessage)
+{
+	unsigned int hash[5], workspace[SHA_WORKSPACE_WORDS];
+	char *local_buf[MAX_SERIAL_LEN] = {0};
+	int i =0;
+	strlcpy(local_buf, kmessage, MAX_SERIAL_LEN);
+	local_buf[64] = '\0';
+	sha_init(hash);
+	sha_transform(hash, (unsigned char *)local_buf, workspace);
+	for (i = 0; i < 5; i++)
+	{
+		output_password[i]= hash[i];
+	}
+}
+
+static int android_set_password(const char *kmessage, struct kernel_param *kp)
+{
+	int len = 0;
+	int i =0;
+	if(kmessage)
+		len = strlen(kmessage);
+	else
+	{
+		for(i=0;i<5;i++)
+		{
+			output_password[i] = 0;
+		}
+		return 0;
+	}
+	
+	if (len > 64) {
+		return -ENOSPC;
+	}
+	android_hash_password(kmessage);
+	return 0;
+}
+static int android_get_password(unsigned int *buffer, struct kernel_param *kp)
+{
+	int ret = 0;
+	int i =0;
+	for(i=0;i<5;i++)
+	{
+		buffer[i] = output_password[i];
+		output_password[i] = 0;
+	}
+	return ret;
+}
+#endif 
+
+static int android_set_nv(unsigned long pid, struct kernel_param *kp)
+{
+	int ret = 0;
+
+	unsigned short nv_ope = 0;
+	int usbsetting = 0;
+#ifdef ENABLE_PWSTRING_IF
+	unsigned int  buffer [5] = {0};	
+	int loop =0;
+#endif 
+
+	switch (pid) {
+
+#if 0
+	case PID__ADB_MSC_DIG_MDM_GPS:
+	case PID__ADB_MSC_DIG_____GPS:
+	case PID__ADB_MSC_____MDM____:
+	case TSB_PRODUCT_ID:
+#else
+	case PID__ADB_MSC_DIG_MDM_GPS_LSM:
+#endif
+
+		usbsetting = 1;
+#ifdef ENABLE_PWSTRING_IF
+		android_get_password(buffer, kp);
+		for (loop =0; loop<5; loop ++) {
+			if( buffer[loop] != desired_password[loop] )
+				goto out;
+		}
+#endif 
+		break;
+
+	case TSB_PRODUCT_ID:
+	case LSM_PRODUCT_ID:
+		usbsetting = 1;
+		break;
+
+	default:	
+		break;
+	}
+	
+	if (usbsetting) {
+
+#if 0
+		if (msm_usb_read_nvitem(NV_GPRS_ANITE_GCF_I, &nv_gcf) != 0)
+			goto out;
+		
+		
+		if (pid == PID__ADB_MSC_DIG_MDM_GPS && nv_gcf == 1)
+			nv_ope = 2;
+		else if (pid == PID__ADB_MSC_DIG_____GPS && nv_gcf == 0)
+			nv_ope = 2;
+		else if (pid == PID__ADB_MSC_____MDM____ && nv_gcf == 1)
+			nv_ope = 1;
+		else if (pid == TSB_PRODUCT_ID && nv_gcf == 0)
+			nv_ope = 1;
+		else
+			goto out;
+#else
+		if (pid == PID__ADB_MSC_DIG_MDM_GPS_LSM)
+			nv_ope = 2;
+		else if (pid == TSB_PRODUCT_ID)
+			nv_ope = 0;
+		#if 0	
+		else if (pid == LSM_PRODUCT_ID)
+			nv_ope = 1;
+		#endif	
+#endif
+
+		
+		if (msm_usb_write_nvitem(NV_OPEFLAG_I, &nv_ope) != 0)
+			goto out;
+	}
+	
+	ret = 1;	
+out:
+	return ret;
+}
+
+static unsigned long android_get_pid_from_nv(void)
+{
+	unsigned long pid = 0;
+
+#if 0
+	unsigned short nv_gcf;
+	unsigned short nv_ope;
+	
+	if (msm_usb_read_nvitem(NV_GPRS_ANITE_GCF_I, &nv_gcf) != 0)
+		goto out;
+	
+	if (msm_usb_read_nvitem(NV_OPEFLAG_I, &nv_ope) != 0)
+		goto out;
+	
+	if (nv_gcf == 0 && nv_ope == 0x02)
+		pid = PID__ADB_MSC_DIG_____GPS;
+	else if (nv_gcf == 1 && nv_ope == 0x01)
+		pid = PID__ADB_MSC_____MDM____;	
+	else if (nv_gcf == 1 && nv_ope == 0x02)
+		pid = PID__ADB_MSC_DIG_MDM_GPS;
+	else if (nv_gcf == 0 && nv_ope == 0x01)
+		pid = TSB_PRODUCT_ID;
+#else
+	unsigned short nv_ope;
+	
+	if (msm_usb_read_nvitem(NV_OPEFLAG_I, &nv_ope) != 0)
+		goto out;
+	
+	if (nv_ope == 0x02)
+		pid = PID__ADB_MSC_DIG_MDM_GPS_LSM;
+	#if 0	
+	else if (nv_ope == 0x01)
+		pid = LSM_PRODUCT_ID;
+	#endif	
+#endif
+
+	
+out:
+	return pid;
+}
+
+
 static int android_set_sn(const char *kmessage, struct kernel_param *kp)
 {
 	int len = strlen(kmessage);
@@ -522,7 +801,7 @@ static int android_set_sn(const char *kmessage, struct kernel_param *kp)
 	}
 
 	strlcpy(serial_number, kmessage, MAX_SERIAL_LEN);
-	/* Chop out \n char as a result of echo */
+
 	if (serial_number[len - 1] == '\n')
 		serial_number[len - 1] = '\0';
 
@@ -533,17 +812,50 @@ static int android_set_pid(const char *val, struct kernel_param *kp)
 {
 	int ret = 0;
 	unsigned long tmp;
+	unsigned long pid = 0;  
+
+pr_info("[gadget/android.c] %s(%s)\n", __func__, val);
 
 	ret = strict_strtoul(val, 16, &tmp);
 	if (ret)
 		goto out;
 
-	/* We come here even before android_probe, when product id
-	 * is passed via kernel command line.
-	 */
+
 	if (!_android_dev) {
 		product_id = tmp;
 		goto out;
+	}
+
+
+	if (tmp == 0xffff) {
+		tmp = product_id;
+		if (!store_state)
+			goto out;
+	}
+	if (!boot_set_pid) {
+		pid = android_get_pid_from_nv();
+		if (pid)
+			tmp = pid;
+		
+		boot_set_pid = 1;
+	}
+	else {
+		if (!android_set_nv(tmp, kp)) {
+			printk(KERN_ERR,"%s:invalid combination %x\n",__func__,tmp);
+			ret = -EINVAL;
+			goto out;
+		}
+	}
+
+
+	unsigned long timeout;
+	timeout = jiffies + msecs_to_jiffies(700);
+	while (udc_online_complete) {
+		if (time_after(jiffies, timeout)) {
+			pr_info("[gadget/android.c] %s()USER CALL WARNING!!\n", __func__);
+			return -ENOSPC;
+		}
+		msleep(10);
 	}
 
 	mutex_lock(&_android_dev->lock);
@@ -569,6 +881,18 @@ static int adb_enable_open(struct inode *ip, struct file *fp)
 	struct android_dev *dev = _android_dev;
 	int ret = 0;
 
+pr_info("[gadget/android.c] %s()\n", __func__);
+
+	unsigned long timeout;
+	timeout = jiffies + msecs_to_jiffies(700);
+	while (udc_online_complete) {
+		if (time_after(jiffies, timeout)) {
+			pr_info("[gadget/android.c] %s()USER CALL WARNING!!\n", __func__);
+			return -ENOSPC;
+		}
+		msleep(10);
+	}
+
 	mutex_lock(&dev->lock);
 
 	if (dev->adb_enabled)
@@ -588,6 +912,19 @@ static int adb_enable_release(struct inode *ip, struct file *fp)
 {
 	struct android_dev *dev = _android_dev;
 	int ret = 0;
+
+pr_info("[gadget/android.c] %s()\n", __func__);
+
+	unsigned long timeout;
+	timeout = jiffies + msecs_to_jiffies(700);
+	while (udc_online_complete) {
+		if (time_after(jiffies, timeout)) {
+			pr_info("[gadget/android.c] %s()USER CALL WARNING!!\n", __func__);
+			return -ENOSPC;
+		}
+		msleep(10);
+	}
+
 
 	mutex_lock(&dev->lock);
 
@@ -616,6 +953,24 @@ static struct miscdevice adb_enable_device = {
 	.fops = &adb_enable_fops,
 };
 
+
+static int android_set_serialnumber(const char *kmessage)
+{
+	int len = strlen(kmessage);
+
+	if (len >= MAX_SERIAL_LEN) {
+		printk(KERN_ERR "serial number string too long\n");
+		return -ENOSPC;
+	}
+	memset(serial_number,0,MAX_SERIAL_LEN);
+	strlcpy(serial_number, kmessage, MAX_SERIAL_LEN);
+	
+	if (serial_number[len - 1] == '\n')
+		serial_number[len - 1] = '\0';
+
+	return 0;
+}
+
 static int __init android_probe(struct platform_device *pdev)
 {
 	struct android_usb_platform_data *pdata = pdev->dev.platform_data;
@@ -632,7 +987,11 @@ static int __init android_probe(struct platform_device *pdev)
 	dev->version = pdata->version;
 	strings_dev[STRING_PRODUCT_IDX].s = pdata->product_name;
 	strings_dev[STRING_MANUFACTURER_IDX].s = pdata->manufacturer_name;
+	android_set_serialnumber(pdata->product_serial_number); 
 	strings_dev[STRING_SERIAL_IDX].s = serial_number;
+
+	strlcpy(global_serial_number, serial_number, MAX_SERIAL_LEN);
+
 	dev->pdata = pdata;
 
 	ret = sysfs_create_group(&pdev->dev.kobj, &android_attr_grp);
@@ -660,6 +1019,9 @@ static int __init init(void)
 	struct android_dev *dev;
 	struct usb_composition *func;
 	int ret;
+	unsigned long pid = 0;  
+
+    int len = 0;
 
 	pr_debug("android init\n");
 
@@ -684,12 +1046,31 @@ static int __init init(void)
 	if (ret)
 		goto pdrv_unregister;
 
-	/* Defer composite driver registration till product id is available */
+
+	ret = for_serial_notification();
+	if (ret != 0)
+		goto misc_deregister;
+
+	
 	mutex_lock(&dev->lock);
 	if (!product_id) {
 		mutex_unlock(&dev->lock);
-		ret = 0; /* not failure */
+		ret = 0; 
+		boot_set_pid = 0;   
 		goto out;
+	}
+
+
+	pid = android_get_pid_from_nv();
+	if (pid)
+		product_id = pid;
+    if (product_id == TSB_PRODUCT_ID) {
+		len = strlen(serial_number);
+        if (len <= (MAX_SERIAL_LEN - 2)) {
+		    
+		    serial_number[len] = '0';
+		    serial_number[len + 1] = '\0';
+		}
 	}
 
 	func = android_validate_product_id(product_id);
@@ -706,6 +1087,7 @@ static int __init init(void)
 		mutex_unlock(&dev->lock);
 		goto misc_deregister;
 	}
+	boot_set_pid = 1;   
 	mutex_unlock(&dev->lock);
 
 	return 0;

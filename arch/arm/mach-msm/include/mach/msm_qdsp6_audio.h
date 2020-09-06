@@ -1,3 +1,20 @@
+/*
+ * Certain software is contributed or developed by TOSHIBA CORPORATION.
+ *
+ * Copyright (C) 2010 TOSHIBA CORPORATION All rights reserved.
+ *
+ * This software is licensed under the terms of the GNU General Public
+ * License version 2, as published by FSF, and
+ * may be copied, distributed, and modified under those terms.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * This code is based on msm_qdsp6_audio.h.
+ * The original copyright and notice are described below.
+ */
 /* arch/arm/mach-msm/include/mach/msm_qdsp6_audio.h
  *
  * Copyright (C) 2009 Google, Inc.
@@ -97,6 +114,7 @@ int q6audio_update_acdb(uint32_t id_src, uint32_t id_dst);
 int q6audio_set_rx_volume(int level);
 int q6audio_set_stream_volume(struct audio_client *ac, int vol);
 int q6audio_set_stream_eq_pcm(struct audio_client *ac, void *eq_config);
+int q6audio_power_ctrl(uint32_t operation);
 
 struct q6audio_analog_ops {
 	void (*init)(void);
@@ -106,6 +124,7 @@ struct q6audio_analog_ops {
 	void (*bt_sco_enable)(int en);
 	void (*int_mic_enable)(int en);
 	void (*ext_mic_enable)(int en);
+	void (*headset_switch_enable)(int en); //analog mic control
 };
 
 void q6audio_register_analog_ops(struct q6audio_analog_ops *ops);

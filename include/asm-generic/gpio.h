@@ -95,6 +95,9 @@ struct gpio_chip {
 
 	void			(*dbg_show)(struct seq_file *s,
 						struct gpio_chip *chip);
+	int			(*configure)(struct gpio_chip *chip, unsigned offset, unsigned long flags);
+	int			(*read_detect_status)(struct gpio_chip *chip, unsigned offset);
+	int			(*clear_detect_status)(struct gpio_chip *chip, unsigned offset);
 	int			base;
 	u16			ngpio;
 	char			**names;
@@ -123,6 +126,9 @@ extern int gpio_direction_output(unsigned gpio, int value);
 extern int gpio_get_value_cansleep(unsigned gpio);
 extern void gpio_set_value_cansleep(unsigned gpio, int value);
 
+extern int gpio_configure(unsigned int gpio, unsigned long flags);
+extern int gpio_read_detect_status(unsigned int gpio);
+extern int gpio_clear_detect_status(unsigned int gpio);
 
 /* A platform's <asm/gpio.h> code may want to inline the I/O calls when
  * the GPIO is constant and refers to some always-present controller,

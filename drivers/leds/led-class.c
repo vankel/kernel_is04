@@ -1,4 +1,22 @@
 /*
+ * Certain software is contributed or developed by 
+ * FUJITSU TOSHIBA MOBILE COMMUNICATIONS LIMITED.
+ *
+ * COPYRIGHT(C) FUJITSU TOSHIBA MOBILE COMMUNICATIONS LIMITED 2011
+ *
+ * This software is licensed under the terms of the GNU General Public
+ * License version 2, as published by FSF, and
+ * may be copied, distributed, and modified under those terms.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * This code is based on led-class.c.
+ * The original copyright and notice are described below.
+ */
+/*
  * LED Class Core
  *
  * Copyright (C) 2005 John Lenz <lenz@cs.wisc.edu>
@@ -72,10 +90,14 @@ static ssize_t led_max_brightness_show(struct device *dev,
 	return sprintf(buf, "%u\n", led_cdev->max_brightness);
 }
 
-static DEVICE_ATTR(brightness, 0644, led_brightness_show, led_brightness_store);
+//static DEVICE_ATTR(brightness, 0644, led_brightness_show, led_brightness_store);
+static DEVICE_ATTR(brightness, 0777, led_brightness_show, led_brightness_store);
+static DEVICE_ATTR(led_notify, 0777, led_notify_show, led_notify_store);
+static DEVICE_ATTR(led_color, 0777, led_color_show, led_color_store);
 static DEVICE_ATTR(max_brightness, 0444, led_max_brightness_show, NULL);
 #ifdef CONFIG_LEDS_TRIGGERS
-static DEVICE_ATTR(trigger, 0644, led_trigger_show, led_trigger_store);
+//static DEVICE_ATTR(trigger, 0644, led_trigger_show, led_trigger_store);
+static DEVICE_ATTR(trigger, 0777, led_trigger_show, led_trigger_store);
 #endif
 
 /**
@@ -139,6 +161,13 @@ int led_classdev_register(struct device *parent, struct led_classdev *led_cdev)
 	if (rc)
 		goto err_out;
 
+	rc = device_create_file(led_cdev->dev, &dev_attr_led_notify);
+	if (rc)
+		goto err_out_led_notify;
+
+	rc = device_create_file(led_cdev->dev, &dev_attr_led_color);
+	if (rc)
+		goto err_out_led_color;
 #ifdef CONFIG_LEDS_TRIGGERS
 	init_rwsem(&led_cdev->trigger_lock);
 #endif
@@ -174,6 +203,11 @@ err_out_led_list:
 	device_remove_file(led_cdev->dev, &dev_attr_max_brightness);
 #endif
 err_out_attr_max:
+//	device_remove_file(led_cdev->dev, &dev_attr_brightness);
+	device_remove_file(led_cdev->dev, &dev_attr_led_color);
+err_out_led_color:
+	device_remove_file(led_cdev->dev, &dev_attr_led_notify);
+err_out_led_notify:
 	device_remove_file(led_cdev->dev, &dev_attr_brightness);
 	list_del(&led_cdev->node);
 err_out:
@@ -191,6 +225,8 @@ EXPORT_SYMBOL_GPL(led_classdev_register);
 void led_classdev_unregister(struct led_classdev *led_cdev)
 {
 	device_remove_file(led_cdev->dev, &dev_attr_max_brightness);
+	device_remove_file(led_cdev->dev, &dev_attr_led_notify);
+	device_remove_file(led_cdev->dev, &dev_attr_led_color);
 	device_remove_file(led_cdev->dev, &dev_attr_brightness);
 #ifdef CONFIG_LEDS_TRIGGERS
 	device_remove_file(led_cdev->dev, &dev_attr_trigger);

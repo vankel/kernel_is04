@@ -1346,7 +1346,53 @@ int __gpio_to_irq(unsigned gpio)
 }
 EXPORT_SYMBOL_GPL(__gpio_to_irq);
 
+int gpio_configure(unsigned int gpio, unsigned long flags)
+{
+	int ret = -ENOTSUPP;
+    struct gpio_chip *chip;
+	unsigned long irq_flags;
 
+	spin_lock_irqsave(&gpio_lock, irq_flags);
+	chip = gpio_to_chip(gpio);
+    if (chip && chip->configure){
+		ret = chip->configure(chip, gpio-chip->base, flags);
+    }
+	spin_unlock_irqrestore(&gpio_lock, irq_flags);
+	return ret;
+}
+EXPORT_SYMBOL(gpio_configure);
+
+int gpio_read_detect_status(unsigned int gpio)
+{
+    int ret = -ENOTSUPP;
+    struct gpio_chip *chip;
+    unsigned long irq_flags;
+
+    spin_lock_irqsave(&gpio_lock, irq_flags);
+    chip = gpio_to_chip(gpio);
+    if (chip && chip->read_detect_status){
+        ret = chip->read_detect_status(chip, gpio - chip->base);
+    }
+    spin_unlock_irqrestore(&gpio_lock, irq_flags);
+    return ret;
+}
+EXPORT_SYMBOL(gpio_read_detect_status);
+
+int gpio_clear_detect_status(unsigned int gpio)
+{
+    int ret = -ENOTSUPP;
+    struct gpio_chip *chip;
+    unsigned long irq_flags;
+
+    spin_lock_irqsave(&gpio_lock, irq_flags);
+    chip = gpio_to_chip(gpio);
+    if (chip && chip->clear_detect_status){
+        ret = chip->clear_detect_status(chip, gpio - chip->base);
+    }
+    spin_unlock_irqrestore(&gpio_lock, irq_flags);
+    return ret;
+}
+EXPORT_SYMBOL(gpio_clear_detect_status);
 
 /* There's no value in making it easy to inline GPIO calls that may sleep.
  * Common examples include ones connected to I2C or SPI chips.

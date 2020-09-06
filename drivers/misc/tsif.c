@@ -1,4 +1,22 @@
 /*
+ * Certain software is contributed or developed by 
+ * FUJITSU TOSHIBA MOBILE COMMUNICATIONS LIMITED.
+ *
+ * COPYRIGHT(C) FUJITSU TOSHIBA MOBILE COMMUNICATIONS LIMITED 2011
+ *
+ * This software is licensed under the terms of the GNU General Public
+ * License version 2, as published by FSF, and
+ * may be copied, distributed, and modified under those terms.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * This code is based on tsif.c.
+ * The original copyright and notice are described below.
+ */
+/*
  * TSIF Driver
  *
  * Copyright (c) 2009-2010, Code Aurora Forum. All rights reserved.
@@ -395,8 +413,10 @@ static void tsif_dma_schedule(struct msm_tsif_device *tsif_device)
 		if (dmwi1 != tsif_device->ri) {
 			tsif_device->dmwi = dmwi1;
 		} else {
+#if 0
 			dev_info(&tsif_device->pdev->dev,
 				 "Overflow detected\n");
+#endif
 		}
 		xfer->wi = tsif_device->dmwi;
 #ifdef CONFIG_TSIF_DEBUG
@@ -690,7 +710,9 @@ static irqreturn_t tsif_irq(int irq, void *dev_id)
 		tsif_device->stat_rx++;
 	}
 	if (sts_ctl & TSIF_STS_CTL_OVERFLOW) {
+#if 0
 		dev_info(&tsif_device->pdev->dev, "TSIF IRQ: OVERFLOW\n");
+#endif
 		tsif_device->stat_overflow++;
 	}
 	if (sts_ctl & TSIF_STS_CTL_LOST_SYNC) {

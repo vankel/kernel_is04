@@ -1,4 +1,22 @@
 /*
+ * Certain software is contributed or developed by 
+ * FUJITSU TOSHIBA MOBILE COMMUNICATIONS LIMITED.
+ *
+ * COPYRIGHT(C) FUJITSU TOSHIBA MOBILE COMMUNICATIONS LIMITED 2011
+ *
+ * This software is licensed under the terms of the GNU General Public
+ * License version 2, as published by FSF, and
+ * may be copied, distributed, and modified under those terms.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * This code is based on q6audio.c.
+ * The original copyright and notice are described below.
+ */
+/*
  * Copyright (C) 2009 Google, Inc.
  * Copyright (c) 2010-2011, Code Aurora Forum. All rights reserved.
  * Author: Brian Swetland <swetland@google.com>
@@ -14,6 +32,7 @@
  *
  */
 
+#include <linux/slab.h>
 #include <linux/mutex.h>
 #include <linux/sched.h>
 #include <linux/wait.h>
@@ -32,6 +51,7 @@
 #include "dal_acdb.h"
 #include "dal_adie.h"
 #include <mach/msm_qdsp6_audio.h>
+#include <mach/rpc_hsusb.h> //Power Control
 
 #include <linux/msm_audio_aac.h>
 
@@ -39,6 +59,8 @@
 
 #include "q6audio_devices.h"
 #include <mach/debug_mm.h>
+
+#include "dev_model.h"
 
 #if 0
 #define TRACE(x...) pr_info("Q6: "x)
@@ -54,28 +76,38 @@ struct q6_hw_info {
 
 static struct q6_hw_info q6_audio_hw[Q6_HW_COUNT] = {
 	[Q6_HW_HANDSET] = {
-		.min_gain = -400,
-		.max_gain = 1100,
+//		.min_gain = -400,
+//		.max_gain = 1100,
+		.min_gain = -1400,
+		.max_gain = 600,
 	},
 	[Q6_HW_HEADSET] = {
-		.min_gain = -1100,
-		.max_gain = 400,
+//		.min_gain = -1100,
+//		.max_gain = 400,
+		.min_gain = -2500,
+		.max_gain = 0,
 	},
 	[Q6_HW_SPEAKER] = {
-		.min_gain = -1000,
-		.max_gain = 500,
+//		.min_gain = -1000,
+//		.max_gain = 500,
+		.min_gain = -2000,
+		.max_gain = 0,
 	},
 	[Q6_HW_TTY] = {
 		.min_gain = 0,
 		.max_gain = 0,
 	},
 	[Q6_HW_BT_SCO] = {
-		.min_gain = -1100,
-		.max_gain = 400,
+//		.min_gain = -1100,
+//		.max_gain = 400,
+		.min_gain = -2500,
+		.max_gain = 0,
 	},
 	[Q6_HW_BT_A2DP] = {
-		.min_gain = -1100,
-		.max_gain = 400,
+//		.min_gain = -1100,
+//		.max_gain = 400,
+		.min_gain = -2500,
+		.max_gain = 0,
 	},
 };
 
@@ -114,6 +146,9 @@ static struct q6audio_analog_ops *analog_ops = &default_analog_ops;
 static uint32_t tx_clk_freq = 8000;
 static int tx_mute_status = 0;
 static int rx_vol_level = 100;
+//Additional interface for TX path Volume changes
+static int tx_vol_level = 100;
+
 static uint32_t tx_acdb = 0;
 static uint32_t rx_acdb = 0;
 
@@ -610,6 +645,7 @@ static int audio_set_table(struct audio_client *ac,
 
 	memset(&rpc, 0, sizeof(rpc));
 	rpc.hdr.opcode = ADSP_AUDIO_IOCTL_SET_DEVICE_CONFIG_TABLE;
+
 	if (q6_device_to_dir(device_id) == Q6_TX) {
 		if (tx_clk_freq > 16000)
 			rpc.hdr.data = 48000;
@@ -618,6 +654,7 @@ static int audio_set_table(struct audio_client *ac,
 		else
 			rpc.hdr.data = 8000;
 	}
+
 	rpc.device_id = device_id;
 	rpc.phys_addr = audio_phys;
 	rpc.phys_size = size;
@@ -695,6 +732,21 @@ static int audio_rx_mute(struct audio_client *ac, uint32_t dev_id, int mute)
 	return audio_ioctl(ac, &rpc, sizeof(rpc));
 }
 
+//Additional interface for TX path Volume changes
+static int audio_tx_volume(struct audio_client *ac, uint32_t dev_id,
+				 int32_t volume)
+{
+	struct adsp_set_dev_volume_command rpc;
+	pr_info("Tx Gain function with RPC called and Level is %d \n",volume);
+	pr_info("Tx Device is %d\n", dev_id);
+	memset(&rpc, 0, sizeof(rpc));
+	rpc.hdr.opcode = ADSP_AUDIO_IOCTL_CMD_SET_DEVICE_VOL;
+	rpc.device_id = dev_id;
+	rpc.path = ADSP_PATH_TX;
+	rpc.volume = volume;
+	return audio_ioctl(ac, &rpc, sizeof(rpc));
+}
+
 static int audio_tx_mute(struct audio_client *ac, uint32_t dev_id, int mute)
 {
 	struct adsp_set_dev_mute_command rpc;
@@ -707,6 +759,14 @@ static int audio_tx_mute(struct audio_client *ac, uint32_t dev_id, int mute)
 
 	memset(&rpc, 0, sizeof(rpc));
 	rpc.hdr.opcode = ADSP_AUDIO_IOCTL_CMD_SET_DEVICE_MUTE;
+	if ((mute == STREAM_UNMUTE) && (tx_mute_status == DEVICE_MUTE))
+	{
+		rpc.device_id = dev_id;
+		rpc.path = ADSP_PATH_TX;
+		rpc.mute = DEVICE_UNMUTE;
+		audio_ioctl(ac, &rpc, sizeof(rpc));
+	}
+	
 	if ((mute == STREAM_UNMUTE) || (mute == STREAM_MUTE)) {
 		rpc.device_id = ADSP_AUDIO_DEVICE_ID_VOICE;
 		rpc.path = ADSP_PATH_TX_CNG_DIS;
@@ -982,6 +1042,7 @@ static void audio_rx_analog_enable(int en)
 	case ADSP_AUDIO_DEVICE_ID_HEADSET_SPKR_MONO:
 	case ADSP_AUDIO_DEVICE_ID_HEADSET_SPKR_STEREO:
 	case ADSP_AUDIO_DEVICE_ID_TTY_HEADSET_SPKR:
+	case ADSP_AUDIO_DEVICE_ID_TEST_LB_HEADSET_SPKR:
 		if (analog_ops->headset_enable)
 			analog_ops->headset_enable(en);
 		break;
@@ -996,6 +1057,7 @@ static void audio_rx_analog_enable(int en)
 		break;
 	case ADSP_AUDIO_DEVICE_ID_SPKR_PHONE_MONO:
 	case ADSP_AUDIO_DEVICE_ID_SPKR_PHONE_STEREO:
+	case ADSP_AUDIO_DEVICE_ID_TEST_LB_SPKR_PHONE:
 		if (analog_ops->speaker_enable)
 			analog_ops->speaker_enable(en);
 		break;
@@ -1004,6 +1066,7 @@ static void audio_rx_analog_enable(int en)
 			analog_ops->bt_sco_enable(en);
 		break;
 	case ADSP_AUDIO_DEVICE_ID_HANDSET_SPKR:
+	case ADSP_AUDIO_DEVICE_ID_TEST_LB_HANDSET_SPKR:
 		if (analog_ops->receiver_enable)
 			analog_ops->receiver_enable(en);
 		break;
@@ -1015,6 +1078,7 @@ static void audio_tx_analog_enable(int en)
 	switch (audio_tx_device_id) {
 	case ADSP_AUDIO_DEVICE_ID_HANDSET_MIC:
 	case ADSP_AUDIO_DEVICE_ID_SPKR_PHONE_MIC:
+	case ADSP_AUDIO_DEVICE_ID_TEST_LB_HANDSET_MIC:
 		if (analog_ops->int_mic_enable)
 			analog_ops->int_mic_enable(en);
 		break;
@@ -1022,6 +1086,7 @@ static void audio_tx_analog_enable(int en)
 	case ADSP_AUDIO_DEVICE_ID_TTY_HEADSET_MIC:
 	case ADSP_AUDIO_DEVICE_ID_HANDSET_DUAL_MIC:
 	case ADSP_AUDIO_DEVICE_ID_SPKR_PHONE_DUAL_MIC:
+	case ADSP_AUDIO_DEVICE_ID_TEST_LB_HEADSET_MIC:
 		if (analog_ops->ext_mic_enable)
 			analog_ops->ext_mic_enable(en);
 		break;
@@ -1125,7 +1190,6 @@ static void _audio_tx_path_enable(int reconf, uint32_t acdb_id)
 static void _audio_rx_path_disable(void)
 {
 	audio_rx_analog_enable(0);
-
 	if (audio_rx_path_id) {
 		adie_proceed_to_stage(adie, ADIE_PATH_RX,
 				ADIE_STAGE_ANALOG_OFF);
@@ -1138,7 +1202,6 @@ static void _audio_rx_path_disable(void)
 static void _audio_tx_path_disable(void)
 {
 	audio_tx_analog_enable(0);
-
 	if (audio_tx_path_id) {
 		adie_proceed_to_stage(adie, ADIE_PATH_TX,
 				ADIE_STAGE_ANALOG_OFF);
@@ -1448,6 +1511,36 @@ int q6audio_set_rx_volume(int level)
 	return 0;
 }
 
+//Additional interface for TX path Volume changes
+int q6audio_set_tx_volume(int level )
+{
+	uint32_t adev;
+	int vol;
+	pr_info("Tx Gain function called with Volume %d \n", level);
+	if (q6audio_init())
+	{
+		pr_err("Q6 audio Init Failed ");
+		return 0;
+	}
+
+	if (level < 0 || level > 100)
+	{
+		pr_err("Not a correct Level %d \n", level);
+		return -EINVAL;
+	}
+
+	mutex_lock(&audio_path_lock);
+	/* Use the default device for TX path
+        */
+        vol = q6_device_volume(audio_tx_device_id, level);
+	audio_tx_mute(ac_control, adev, 0);
+	audio_tx_volume(ac_control,audio_tx_device_id , vol);
+	tx_vol_level = level;
+	mutex_unlock(&audio_path_lock);
+	return 0;
+
+}
+
 static void do_rx_routing(uint32_t device_id, uint32_t acdb_id)
 {
 	if (device_id == audio_rx_device_id &&
@@ -1698,7 +1791,7 @@ struct audio_client *q6voice_open(uint32_t flags)
 		audio_rx_path_enable(1, rx_acdb);
 	else {
 		if (!audio_tx_path_refcount)
-			tx_clk_freq = 8000;
+		tx_clk_freq = 8000;
 		audio_tx_path_enable(1, tx_acdb);
 	}
 
@@ -1820,7 +1913,7 @@ struct audio_client *q6audio_open_aac(uint32_t bufsz, uint32_t samplerate,
 		audio_rx_path_enable(1, acdb_id);
 	else{
 		if (!audio_tx_path_refcount)
-			tx_clk_freq = 48000;
+		tx_clk_freq = 48000;
 		audio_tx_path_enable(1, acdb_id);
 	}
 
@@ -1921,4 +2014,50 @@ int q6audio_async(struct audio_client *ac)
 	rpc.opcode = ADSP_AUDIO_IOCTL_CMD_STREAM_EOS;
 	rpc.response_type = ADSP_AUDIO_RESPONSE_ASYNC;
 	return audio_ioctl(ac, &rpc, sizeof(rpc));
+}
+
+/* Power Control */
+int q6audio_power_ctrl(uint32_t operation)
+{
+	switch(operation){
+	case 0:
+		if(dev_model_get_model_no() == DEV_MODEL_NO_0)
+		{
+			gpio_set_value(106,1);
+		}
+		else
+		{
+			gpio_set_value(143,1);
+		}
+		break;
+	case 1:
+		if(dev_model_get_model_no() == DEV_MODEL_NO_0)
+		{
+			gpio_set_value(106,0);
+		}
+		else
+		{
+			gpio_set_value(143,0);
+		}
+		break;
+	case 2:
+		hsusb_cable_det_notifi_earphone_status(1);
+		break;
+	case 3:
+		hsusb_cable_det_notifi_earphone_status(0);
+		break;
+	//analog mic control -->
+	case 4:
+		if (analog_ops->headset_switch_enable)
+			analog_ops->headset_switch_enable(1);
+		break;
+	case 5:
+		if (analog_ops->headset_switch_enable)
+			analog_ops->headset_switch_enable(0);
+		break;
+	//<-- analog mic control
+	default:
+		break;
+	}
+	return 0;
 }

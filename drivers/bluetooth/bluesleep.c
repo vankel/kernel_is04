@@ -1,4 +1,22 @@
 /*
+ * Certain software is contributed or developed by 
+ * FUJITSU TOSHIBA MOBILE COMMUNICATIONS LIMITED.
+ *
+ * COPYRIGHT(C) FUJITSU TOSHIBA MOBILE COMMUNICATIONS LIMITED 2011
+ *
+ * This software is licensed under the terms of the GNU General Public
+ * License version 2, as published by FSF, and
+ * may be copied, distributed, and modified under those terms.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * This code is based on bluesleep.c.
+ * The original copyright and notice are described below.
+ */
+/*
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License version 2 as
@@ -67,6 +85,13 @@ struct bluesleep_info {
 	unsigned ext_wake;
 	unsigned host_wake_irq;
 	struct uart_port *uport;
+/* New GPIO resources used : Added Start*/
+	unsigned reset_n;
+	unsigned uart_rx;
+	unsigned uart_tx;
+	unsigned uart_rfr;
+	unsigned uart_cts;
+/* New GPIO resources used : Added End */
 };
 
 /* work function */
@@ -162,6 +187,15 @@ void bluesleep_sleep_wakeup(void)
 		mod_timer(&tx_timer, jiffies + (TX_TIMER_INTERVAL * HZ));
 		gpio_set_value(bsi->ext_wake, 0);
 		clear_bit(BT_ASLEEP, &flags);
+/* New GPIO settings reverted at wake up : Added Start */
+                gpio_tlmm_config(GPIO_CFG(bsi->reset_n, 0, GPIO_OUTPUT, GPIO_NO_PULL, GPIO_2MA), GPIO_ENABLE);
+                gpio_tlmm_config(GPIO_CFG(bsi->host_wake, 0, GPIO_INPUT, GPIO_NO_PULL, GPIO_2MA), GPIO_ENABLE);
+                gpio_tlmm_config(GPIO_CFG(bsi->uart_rfr, 2, GPIO_OUTPUT, GPIO_NO_PULL, GPIO_2MA), GPIO_ENABLE);
+                gpio_tlmm_config(GPIO_CFG(bsi->uart_cts, 2, GPIO_INPUT, GPIO_NO_PULL, GPIO_2MA), GPIO_ENABLE);
+                gpio_tlmm_config(GPIO_CFG(bsi->uart_rx, 2, GPIO_INPUT, GPIO_NO_PULL, GPIO_2MA), GPIO_ENABLE);
+                gpio_tlmm_config(GPIO_CFG(bsi->uart_tx, 2, GPIO_OUTPUT, GPIO_NO_PULL, GPIO_2MA), GPIO_ENABLE);
+/* New GPIO Settings reverted at wake up : Added End */
+
 		/*Activating UART */
 		hsuart_power(1);
 	}
@@ -183,6 +217,14 @@ static void bluesleep_sleep_work(struct work_struct *work)
 		if (msm_hs_tx_empty(bsi->uport)) {
 			BT_DBG("going to sleep...");
 			set_bit(BT_ASLEEP, &flags);
+/* New GPIO settings applied when going to sleep: Added Start */
+			gpio_tlmm_config(GPIO_CFG(bsi->reset_n, 0, GPIO_OUTPUT, GPIO_NO_PULL, GPIO_2MA), GPIO_ENABLE);
+			gpio_tlmm_config(GPIO_CFG(bsi->host_wake, 0, GPIO_INPUT, GPIO_PULL_UP, GPIO_2MA), GPIO_ENABLE);
+			gpio_tlmm_config(GPIO_CFG(bsi->uart_rfr, 2, GPIO_OUTPUT, GPIO_NO_PULL, GPIO_2MA), GPIO_ENABLE);
+			gpio_tlmm_config(GPIO_CFG(bsi->uart_cts, 2, GPIO_INPUT, GPIO_PULL_UP, GPIO_2MA), GPIO_ENABLE);
+			gpio_tlmm_config(GPIO_CFG(bsi->uart_rx, 2, GPIO_INPUT, GPIO_PULL_UP, GPIO_2MA), GPIO_ENABLE);
+			gpio_tlmm_config(GPIO_CFG(bsi->uart_tx, 2, GPIO_OUTPUT, GPIO_NO_PULL, GPIO_2MA), GPIO_ENABLE);
+/* New GPIO settings applied when going to sleep: Added End */
 			/*Deactivating UART */
 			hsuart_power(0);
 		} else {
@@ -593,16 +635,99 @@ static int __init bluesleep_probe(struct platform_device *pdev)
 	ret = gpio_direction_output(bsi->ext_wake, 0);
 	if (ret)
 		goto free_bt_ext_wake;
+/* New GPIO resources acquired: Added Start */
+	res = platform_get_resource_byname(pdev, IORESOURCE_IO,
+                                "gpio_reset_n");
+        if (!res) {
+                BT_ERR("couldn't find reset_n gpio\n");
+                ret = -ENODEV;
+                goto free_bt_ext_wake;
+        }
+        bsi->reset_n = res->start;
+
+        ret = gpio_request(bsi->reset_n, "bt_reset_n");
+        if (ret)
+                goto free_bt_ext_wake;
+
+	res = platform_get_resource_byname(pdev, IORESOURCE_IO,
+                                "gpio_uart_rfr");
+        if (!res) {
+                BT_ERR("couldn't find uart_rfr gpio\n");
+                ret = -ENODEV;
+                goto free_bt_reset_n;
+        }
+        bsi->uart_rfr = res->start;
+
+        ret = gpio_request(bsi->uart_rfr, "bt_uart_rfr");
+        if (ret)
+                goto free_bt_reset_n;
+
+	res = platform_get_resource_byname(pdev, IORESOURCE_IO,
+                                "gpio_uart_cts");
+        if (!res) {
+                BT_ERR("couldn't find uart_cts gpio\n");
+                ret = -ENODEV;
+                goto free_bt_uart_rfr;
+        }
+        bsi->uart_cts = res->start;
+
+        ret = gpio_request(bsi->uart_cts, "bt_uart_cts");
+        if (ret)
+                goto free_bt_uart_rfr;
+
+	res = platform_get_resource_byname(pdev, IORESOURCE_IO,
+                                "gpio_uart_tx");
+        if (!res) {
+                BT_ERR("couldn't find uart_tx gpio\n");
+                ret = -ENODEV;
+                goto free_bt_uart_cts;
+        }
+        bsi->uart_tx = res->start;
+
+        ret = gpio_request(bsi->uart_tx, "bt_uart_tx");
+        if (ret)
+                goto free_bt_uart_cts;
+
+	res = platform_get_resource_byname(pdev, IORESOURCE_IO,
+                                "gpio_uart_rx");
+        if (!res) {
+                BT_ERR("couldn't find uart_rx gpio\n");
+                ret = -ENODEV;
+                goto free_bt_uart_tx;
+        }
+        bsi->uart_rx = res->start;
+
+        ret = gpio_request(bsi->uart_rx, "bt_uart_rx");
+        if (ret)
+                goto free_bt_uart_tx;
+
+
+/* New GPIO resources acquired : Added End */
 
 	bsi->host_wake_irq = platform_get_irq_byname(pdev, "host_wake");
 	if (bsi->host_wake_irq < 0) {
 		BT_ERR("couldn't find host_wake irq\n");
 		ret = -ENODEV;
-		goto free_bt_ext_wake;
+/* Jump to new error handler label : Modified Start */
+		//goto free_bt_ext_wake;
+		goto free_bt_uart_rx;
+/* Jump to new error handler label : Modified End */
 	}
 
 
 	return 0;
+/* New error handler labels : Added Start */
+free_bt_uart_rx:
+	gpio_free(bsi->uart_rx);
+free_bt_uart_tx:
+	gpio_free(bsi->uart_tx);
+free_bt_uart_cts:
+	gpio_free(bsi->uart_cts);
+free_bt_uart_rfr:
+	gpio_free(bsi->uart_rfr);
+free_bt_reset_n:
+	gpio_free(bsi->reset_n);
+/* New error handler labels : Added End */
 
 free_bt_ext_wake:
 	gpio_free(bsi->ext_wake);
@@ -625,7 +750,13 @@ static int bluesleep_remove(struct platform_device *pdev)
 		if (test_bit(BT_ASLEEP, &flags))
 			hsuart_power(1);
 	}
-
+/* Freeing newly added resources : Added Start */
+	gpio_free(bsi->uart_rx);
+	gpio_free(bsi->uart_tx);
+	gpio_free(bsi->uart_cts);
+	gpio_free(bsi->uart_rfr);
+	gpio_free(bsi->reset_n);
+/* Freeing newly added resources : Added End */
 	gpio_free(bsi->host_wake);
 	gpio_free(bsi->ext_wake);
 	kfree(bsi);

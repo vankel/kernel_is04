@@ -1,4 +1,22 @@
 /*
+ * Certain software is contributed or developed by 
+ * FUJITSU TOSHIBA MOBILE COMMUNICATIONS LIMITED.
+ *
+ * COPYRIGHT(C) FUJITSU TOSHIBA MOBILE COMMUNICATIONS LIMITED 2011
+ *
+ * This software is licensed under the terms of the GNU General Public
+ * License version 2, as published by FSF, and
+ * may be copied, distributed, and modified under those terms.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * This code is based on ledtrig-timer.c.
+ * The original copyright and notice are described below.
+ */
+/*
  * LED Kernel Timer Trigger
  *
  * Copyright 2005-2006 Openedhand Ltd.
@@ -152,8 +170,13 @@ static ssize_t led_delay_off_store(struct device *dev,
 	return ret;
 }
 
+#if 0
 static DEVICE_ATTR(delay_on, 0644, led_delay_on_show, led_delay_on_store);
 static DEVICE_ATTR(delay_off, 0644, led_delay_off_show, led_delay_off_store);
+#else
+static DEVICE_ATTR(delay_on, 0777, led_delay_on_show, led_delay_on_store);
+static DEVICE_ATTR(delay_off, 0777, led_delay_off_show, led_delay_off_store);
+#endif
 
 static void timer_trig_activate(struct led_classdev *led_cdev)
 {

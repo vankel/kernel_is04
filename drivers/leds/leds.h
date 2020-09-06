@@ -1,4 +1,23 @@
 /*
+ * Certain software is contributed or developed by 
+ * FUJITSU TOSHIBA MOBILE COMMUNICATIONS LIMITED.
+ *
+ * COPYRIGHT(C) FUJITSU TOSHIBA MOBILE COMMUNICATIONS LIMITED 2011
+ *
+ * This software is licensed under the terms of the GNU General Public
+ * License version 2, as published by FSF, and
+ * may be copied, distributed, and modified under those terms.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * This code is based on leds.h.
+ * The original copyright and notice are described below.
+ */
+
+/*
  * LED Core
  *
  * Copyright 2005 Openedhand Ltd.
@@ -49,6 +68,14 @@ void led_trigger_remove(struct led_classdev *led_cdev);
 ssize_t led_trigger_store(struct device *dev, struct device_attribute *attr,
 			const char *buf, size_t count);
 ssize_t led_trigger_show(struct device *dev, struct device_attribute *attr,
+			char *buf);
+ssize_t led_notify_store(struct device *dev, struct device_attribute *attr,
+			const char *buf, size_t count);
+ssize_t led_notify_show(struct device *dev, struct device_attribute *attr,
+			char *buf);
+ssize_t led_color_store(struct device *dev, struct device_attribute *attr,
+			const char *buf, size_t count);
+ssize_t led_color_show(struct device *dev, struct device_attribute *attr,
 			char *buf);
 
 #endif	/* __LEDS_H_INCLUDED */
