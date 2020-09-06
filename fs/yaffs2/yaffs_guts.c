@@ -49,6 +49,7 @@ static void yaffs_HandleUpdateChunk(yaffs_Device *dev, int chunkInNAND,
 				const yaffs_ExtendedTags *tags);
 
 /* Other local prototypes */
+static void yaffs_UpdateParent(yaffs_Object *obj);
 static int yaffs_UnlinkObject(yaffs_Object *obj);
 static int yaffs_ObjectHasCachedWriteData(yaffs_Object *obj);
 
@@ -69,6 +70,8 @@ static int yaffs_UpdateObjectHeader(yaffs_Object *in, const YCHAR *name,
 				int force, int isShrink, int shadows);
 static void yaffs_RemoveObjectFromDirectory(yaffs_Object *obj);
 static int yaffs_CheckStructures(void);
+static int yaffs_DeleteWorker(yaffs_Object *in, yaffs_Tnode *tn, __u32 level,
+			int chunkOffset, int *limit);
 static int yaffs_DoGenericObjectDeletion(yaffs_Object *in);
 
 static yaffs_BlockInfo *yaffs_GetBlockInfo(yaffs_Device *dev, int blockNo);
@@ -592,6 +595,54 @@ static void yaffs_VerifyObjectHeader(yaffs_Object *obj, yaffs_ObjectHeader *oh, 
 			obj->objectId));
 }
 
+
+
+static int yaffs_VerifyTnodeWorker(yaffs_Object *obj, yaffs_Tnode *tn,
+					__u32 level, int chunkOffset)
+{
+	int i;
+	yaffs_Device *dev = obj->myDev;
+	int ok = 1;
+
+	if (tn) {
+		if (level > 0) {
+
+			for (i = 0; i < YAFFS_NTNODES_INTERNAL && ok; i++) {
+				if (tn->internal[i]) {
+					ok = yaffs_VerifyTnodeWorker(obj,
+							tn->internal[i],
+							level - 1,
+							(chunkOffset<<YAFFS_TNODES_INTERNAL_BITS) + i);
+				}
+			}
+		} else if (level == 0) {
+			yaffs_ExtendedTags tags;
+			__u32 objectId = obj->objectId;
+
+			chunkOffset <<=  YAFFS_TNODES_LEVEL0_BITS;
+
+			for (i = 0; i < YAFFS_NTNODES_LEVEL0; i++) {
+				__u32 theChunk = yaffs_GetChunkGroupBase(dev, tn, i);
+
+				if (theChunk > 0) {
+					/* T(~0,(TSTR("verifying (%d:%d) %d"TENDSTR),tags.objectId,tags.chunkId,theChunk)); */
+					yaffs_ReadChunkWithTagsFromNAND(dev, theChunk, NULL, &tags);
+					if (tags.objectId != objectId || tags.chunkId != chunkOffset) {
+						T(~0, (TSTR("Object %d chunkId %d NAND mismatch chunk %d tags (%d:%d)"TENDSTR),
+							objectId, chunkOffset, theChunk,
+							tags.objectId, tags.chunkId));
+					}
+				}
+				chunkOffset++;
+			}
+		}
+	}
+
+	return ok;
+
+}
+
+
 static void yaffs_VerifyFile(yaffs_Object *obj)
 {
 	int requiredTallness;
@@ -708,7 +759,7 @@ static void yaffs_VerifyObject(yaffs_Object *obj)
 	chunkMax = (dev->internalEndBlock+1) * dev->nChunksPerBlock - 1;
 
 	chunkInRange = (((unsigned)(obj->hdrChunk)) >= chunkMin && ((unsigned)(obj->hdrChunk)) <= chunkMax);
-	chunkIdOk = chunkInRange || obj->hdrChunk == 0;
+	chunkIdOk = chunkInRange || (obj->hdrChunk == 0);
 	chunkValid = chunkInRange &&
 			yaffs_CheckChunkBit(dev,
 					obj->hdrChunk / dev->nChunksPerBlock,
@@ -1492,14 +1543,14 @@ static int yaffs_FindChunkInGroup(yaffs_Device *dev, int theChunk,
 
 	for (j = 0; theChunk && j < dev->chunkGroupSize; j++) {
 		if (yaffs_CheckChunkBit(dev, theChunk / dev->nChunksPerBlock,
-		   theChunk % dev->nChunksPerBlock)) {
-			if (dev->chunkGroupSize == 1)
+				theChunk % dev->nChunksPerBlock)) {
+			
+			if(dev->chunkGroupSize == 1)
 				return theChunk;
 			else {
-				yaffs_ReadChunkWithTagsFromNAND(dev, theChunk,
-				   NULL, tags);
-				if (yaffs_TagsMatch(tags, objectId,
-				   chunkInInode)) {
+				yaffs_ReadChunkWithTagsFromNAND(dev, theChunk, NULL,
+								tags);
+				if (yaffs_TagsMatch(tags, objectId, chunkInInode)) {
 					/* found it; */
 					return theChunk;
 				}
@@ -1508,6 +1559,100 @@ static int yaffs_FindChunkInGroup(yaffs_Device *dev, int theChunk,
 		theChunk++;
 	}
 	return -1;
+}
+
+
+/* DeleteWorker scans backwards through the tnode tree and deletes all the
+ * chunks and tnodes in the file
+ * Returns 1 if the tree was deleted.
+ * Returns 0 if it stopped early due to hitting the limit and the delete is incomplete.
+ */
+
+static int yaffs_DeleteWorker(yaffs_Object *in, yaffs_Tnode *tn, __u32 level,
+			      int chunkOffset, int *limit)
+{
+	int i;
+	int chunkInInode;
+	int theChunk;
+	yaffs_ExtendedTags tags;
+	int foundChunk;
+	yaffs_Device *dev = in->myDev;
+
+	int allDone = 1;
+
+	if (tn) {
+		if (level > 0) {
+			for (i = YAFFS_NTNODES_INTERNAL - 1; allDone && i >= 0;
+			     i--) {
+				if (tn->internal[i]) {
+					if (limit && (*limit) < 0) {
+						allDone = 0;
+					} else {
+						allDone =
+							yaffs_DeleteWorker(in,
+								tn->
+								internal
+								[i],
+								level -
+								1,
+								(chunkOffset
+									<<
+									YAFFS_TNODES_INTERNAL_BITS)
+								+ i,
+								limit);
+					}
+					if (allDone) {
+						yaffs_FreeTnode(dev,
+								tn->
+								internal[i]);
+						tn->internal[i] = NULL;
+					}
+				}
+			}
+			return (allDone) ? 1 : 0;
+		} else if (level == 0) {
+			int hitLimit = 0;
+
+			for (i = YAFFS_NTNODES_LEVEL0 - 1; i >= 0 && !hitLimit;
+					i--) {
+				theChunk = yaffs_GetChunkGroupBase(dev, tn, i);
+				if (theChunk) {
+
+					chunkInInode = (chunkOffset <<
+						YAFFS_TNODES_LEVEL0_BITS) + i;
+
+					foundChunk =
+						yaffs_FindChunkInGroup(dev,
+								theChunk,
+								&tags,
+								in->objectId,
+								chunkInInode);
+
+					if (foundChunk > 0) {
+						yaffs_DeleteChunk(dev,
+								  foundChunk, 1,
+								  __LINE__);
+						in->nDataChunks--;
+						if (limit) {
+							*limit = *limit - 1;
+							if (*limit <= 0)
+								hitLimit = 1;
+						}
+
+					}
+
+					yaffs_PutLevel0Tnode(dev, tn, i, 0);
+				}
+
+			}
+			return (i < 0) ? 1 : 0;
+
+		}
+
+	}
+
+	return 1;
+
 }
 
 static void yaffs_SoftDeleteChunk(yaffs_Device *dev, int chunk)
@@ -2205,6 +2350,7 @@ static yaffs_Object *yaffs_MknodObject(yaffs_ObjectType type,
 			in = NULL;
 		}
 
+		yaffs_UpdateParent(parent);
 	}
 
 	return in;
@@ -2319,12 +2465,16 @@ int yaffs_RenameObject(yaffs_Object *oldDir, const YCHAR *oldName,
 	yaffs_Object *obj = NULL;
 	yaffs_Object *existingTarget = NULL;
 	int force = 0;
+	int result;
+	yaffs_Device *dev;
 
 
 	if (!oldDir || oldDir->variantType != YAFFS_OBJECT_TYPE_DIRECTORY)
 		YBUG();
 	if (!newDir || newDir->variantType != YAFFS_OBJECT_TYPE_DIRECTORY)
 		YBUG();
+
+	dev = oldDir->myDev;
 
 #ifdef CONFIG_YAFFS_CASE_INSENSITIVE
 	/* Special case for case insemsitive systems (eg. WinCE).
@@ -2335,7 +2485,7 @@ int yaffs_RenameObject(yaffs_Object *oldDir, const YCHAR *oldName,
 		force = 1;
 #endif
 
-	else if (yaffs_strlen(newName) > YAFFS_MAX_NAME_LENGTH)
+	if(yaffs_strlen(newName) > YAFFS_MAX_NAME_LENGTH)
 		/* ENAMETOOLONG */
 		return YAFFS_FAIL;
 
@@ -2353,14 +2503,26 @@ int yaffs_RenameObject(yaffs_Object *oldDir, const YCHAR *oldName,
 			return YAFFS_FAIL;	/* EEXIST or ENOTEMPTY */
 		} else if (existingTarget && existingTarget != obj) {
 			/* Nuke the target first, using shadowing,
-			 * but only if it isn't the same object
+			 * but only if it isn't the same object.
+			 *
+			 * Note we must disable gc otherwise it can mess up the shadowing.
+			 *
 			 */
+			dev->isDoingGC=1;
 			yaffs_ChangeObjectName(obj, newDir, newName, force,
 						existingTarget->objectId);
+			existingTarget->isShadowed = 1;
 			yaffs_UnlinkObject(existingTarget);
+			dev->isDoingGC=0;
 		}
 
-		return yaffs_ChangeObjectName(obj, newDir, newName, 1, 0);
+		result = yaffs_ChangeObjectName(obj, newDir, newName, 1, 0);
+
+		yaffs_UpdateParent(oldDir);
+		if(newDir != oldDir)
+			yaffs_UpdateParent(newDir);
+
+		return result;
 	}
 	return YAFFS_FAIL;
 }
@@ -2824,7 +2986,6 @@ static int yaffs_GarbageCollectBlock(yaffs_Device *dev, int block,
 
 	isCheckpointBlock = (bi->blockState == YAFFS_BLOCK_STATE_CHECKPOINT);
 
-	bi->blockState = YAFFS_BLOCK_STATE_COLLECTING;
 
 	T(YAFFS_TRACE_TRACING,
 			(TSTR("Collecting block %d, in use %d, shrink %d, wholeBlock %d" TENDSTR),
@@ -2835,12 +2996,16 @@ static int yaffs_GarbageCollectBlock(yaffs_Device *dev, int block,
 
 	/*yaffs_VerifyFreeChunks(dev); */
 
+	if(bi->blockState == YAFFS_BLOCK_STATE_FULL)
+		bi->blockState = YAFFS_BLOCK_STATE_COLLECTING;
+	
 	bi->hasShrinkHeader = 0;	/* clear the flag so that the block can erase */
 
 	/* Take off the number of soft deleted entries because
 	 * they're going to get really deleted during GC.
 	 */
-	dev->nFreeChunks -= bi->softDeletions;
+	if(dev->gcChunk == 0) /* first time through for this block */
+		dev->nFreeChunks -= bi->softDeletions;
 
 	dev->isDoingGC = 1;
 
@@ -2956,6 +3121,7 @@ static int yaffs_GarbageCollectBlock(yaffs_Device *dev, int block,
 					if (tags.chunkId == 0) {
 						/* It is an object Id,
 						 * We need to nuke the shrinkheader flags first
+						 * Also need to clean up shadowing.
 						 * We no longer want the shrinkHeader flag since its work is done
 						 * and if it is left in place it will mess up scanning.
 						 */
@@ -2964,6 +3130,9 @@ static int yaffs_GarbageCollectBlock(yaffs_Device *dev, int block,
 						oh = (yaffs_ObjectHeader *)buffer;
 						oh->isShrink = 0;
 						tags.extraIsShrinkHeader = 0;
+						oh->shadowsObject = 0;
+						oh->inbandShadowsObject = 0;
+						tags.extraShadows = 0;
 
 						yaffs_VerifyObjectHeader(object, oh, &tags, 1);
 					}
@@ -3484,7 +3653,7 @@ static int yaffs_WriteChunkDataToObject(yaffs_Object *in, int chunkInInode,
 	newTags.chunkId = chunkInInode;
 	newTags.objectId = in->objectId;
 	newTags.serialNumber =
-	    (prevChunkId >= 0) ? prevTags.serialNumber + 1 : 1;
+	    (prevChunkId > 0) ? prevTags.serialNumber + 1 : 1;
 	newTags.byteCount = nBytes;
 
 	if (nBytes < 1 || nBytes > dev->totalBytesPerChunk) {
@@ -3500,7 +3669,7 @@ static int yaffs_WriteChunkDataToObject(yaffs_Object *in, int chunkInInode,
 	if (newChunkId >= 0) {
 		yaffs_PutChunkIntoFile(in, chunkInInode, newChunkId, 0);
 
-		if (prevChunkId >= 0)
+		if (prevChunkId > 0)
 			yaffs_DeleteChunk(dev, prevChunkId, 1, __LINE__);
 
 		yaffs_CheckFileSanity(in);
@@ -3586,7 +3755,7 @@ int yaffs_UpdateObjectHeader(yaffs_Object *in, const YCHAR *name, int force,
 		if (name && *name) {
 			memset(oh->name, 0, sizeof(oh->name));
 			yaffs_strncpy(oh->name, name, YAFFS_MAX_NAME_LENGTH);
-		} else if (prevChunkId >= 0)
+		} else if (prevChunkId > 0)
 			memcpy(oh->name, oldName, sizeof(oh->name));
 		else
 			memset(oh->name, 0, sizeof(oh->name));
@@ -3644,13 +3813,13 @@ int yaffs_UpdateObjectHeader(yaffs_Object *in, const YCHAR *name, int force,
 		/* Create new chunk in NAND */
 		newChunkId =
 		    yaffs_WriteNewChunkWithTagsToNAND(dev, buffer, &newTags,
-						      (prevChunkId >= 0) ? 1 : 0);
+						      (prevChunkId > 0) ? 1 : 0);
 
 		if (newChunkId >= 0) {
 
 			in->hdrChunk = newChunkId;
 
-			if (prevChunkId >= 0) {
+			if (prevChunkId > 0) {
 				yaffs_DeleteChunk(dev, prevChunkId, 1,
 						  __LINE__);
 			}
@@ -4878,11 +5047,13 @@ int yaffs_ResizeFile(yaffs_Object *in, loff_t newSize)
 	}
 
 
-	/* Write a new object header.
+	/* Write a new object header to reflect the resize.
 	 * show we've shrunk the file, if need be
-	 * Do this only if the file is not in the deleted directories.
+	 * Do this only if the file is not in the deleted directories
+	 * and is not shadowed.
 	 */
 	if (in->parent &&
+	    !in->isShadowed &&
 	    in->parent->objectId != YAFFS_OBJECTID_UNLINKED &&
 	    in->parent->objectId != YAFFS_OBJECTID_DELETED)
 		yaffs_UpdateObjectHeader(in, NULL, 0,
@@ -5095,6 +5266,9 @@ static int yaffs_UnlinkWorker(yaffs_Object *obj)
 		immediateDeletion = 1;
 #endif
 
+	if(obj)
+		yaffs_UpdateParent(obj->parent);
+
 	if (obj->variantType == YAFFS_OBJECT_TYPE_HARDLINK) {
 		return yaffs_DeleteHardLink(obj);
 	} else if (!ylist_empty(&obj->hardLinks)) {
@@ -5149,7 +5323,7 @@ static int yaffs_UnlinkWorker(yaffs_Object *obj)
 		default:
 			return YAFFS_FAIL;
 		}
-	} else if (yaffs_IsNonEmptyDirectory(obj))
+	} else if(yaffs_IsNonEmptyDirectory(obj))
 		return YAFFS_FAIL;
 	else
 		return yaffs_ChangeObjectName(obj, obj->myDev->unlinkedDir,
@@ -5190,7 +5364,8 @@ static void yaffs_HandleShadowedObject(yaffs_Device *dev, int objId,
 		/* Handle YAFFS2 case (backward scanning)
 		 * If the shadowed object exists then ignore.
 		 */
-		if (yaffs_FindObjectByNumber(dev, objId))
+		obj = yaffs_FindObjectByNumber(dev, objId);
+		if(obj)
 			return;
 	}
 
@@ -5202,6 +5377,7 @@ static void yaffs_HandleShadowedObject(yaffs_Device *dev, int objId,
 					     YAFFS_OBJECT_TYPE_FILE);
 	if (!obj)
 		return;
+	obj->isShadowed = 1;
 	yaffs_AddObjectToDirectory(dev->unlinkedDir, obj);
 	obj->variant.fileVariant.shrinkSize = 0;
 	obj->valid = 1;		/* So that we don't read any other info for this file */
@@ -6652,6 +6828,26 @@ static void yaffs_VerifyDirectory(yaffs_Object *directory)
 	}
 }
 
+/*
+ *yaffs_UpdateParent() handles fixing a directories mtime and ctime when a new
+ * link (ie. name) is created or deleted in the directory.
+ *
+ * ie.
+ *   create dir/a : update dir's mtime/ctime
+ *   rm dir/a:   update dir's mtime/ctime
+ *   modify dir/a: don't update dir's mtimme/ctime
+ */
+ 
+static void yaffs_UpdateParent(yaffs_Object *obj)
+{
+	if(!obj)
+		return;
+
+	obj->dirty = 1;
+	obj->yst_mtime = obj->yst_ctime = Y_CURRENT_TIME;
+
+	yaffs_UpdateObjectHeader(obj,NULL,0,0,0);
+}
 
 static void yaffs_RemoveObjectFromDirectory(yaffs_Object *obj)
 {
@@ -6669,10 +6865,9 @@ static void yaffs_RemoveObjectFromDirectory(yaffs_Object *obj)
 
 	ylist_del_init(&obj->siblings);
 	obj->parent = NULL;
-
+	
 	yaffs_VerifyDirectory(parent);
 }
-
 
 static void yaffs_AddObjectToDirectory(yaffs_Object *directory,
 					yaffs_Object *obj)
@@ -6767,7 +6962,7 @@ yaffs_Object *yaffs_FindObjectByName(yaffs_Object *directory,
 				 * Do a real check
 				 */
 				yaffs_GetObjectName(l, buffer,
-						    YAFFS_MAX_NAME_LENGTH);
+						    YAFFS_MAX_NAME_LENGTH + 1);
 				if (yaffs_strncmp(name, buffer, YAFFS_MAX_NAME_LENGTH) == 0)
 					return l;
 			}
@@ -7016,7 +7211,7 @@ int yaffs_DumpObject(yaffs_Object *obj)
 {
 	YCHAR name[257];
 
-	yaffs_GetObjectName(obj, name, 256);
+	yaffs_GetObjectName(obj, name, YAFFS_MAX_NAME_LENGTH + 1);
 
 	T(YAFFS_TRACE_ALWAYS,
 	  (TSTR

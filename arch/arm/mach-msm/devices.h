@@ -25,6 +25,7 @@ extern struct platform_device msm_device_uart3;
 
 extern struct platform_device msm_device_uart_dm1;
 extern struct platform_device msm_device_uart_dm2;
+extern struct platform_device msm_device_uart_dm12;
 
 extern struct platform_device msm_device_sdc1;
 extern struct platform_device msm_device_sdc2;
@@ -45,6 +46,12 @@ extern struct platform_device msm_device_i2c_2;
 
 extern struct platform_device qup_device_i2c;
 
+extern struct platform_device msm_gsbi3_qup_i2c_device;
+extern struct platform_device msm_gsbi4_qup_i2c_device;
+extern struct platform_device msm_gsbi7_qup_i2c_device;
+extern struct platform_device msm_gsbi8_qup_i2c_device;
+extern struct platform_device msm_gsbi9_qup_i2c_device;
+
 extern struct platform_device msm_device_smd;
 extern struct platform_device msm_device_dmov;
 
@@ -57,8 +64,21 @@ extern struct platform_device msm_rotator_device;
 extern struct platform_device msm_device_tsif;
 
 #ifdef CONFIG_I2C_SSBI
+#if defined(CONFIG_ARCH_MSM7X30)
 extern struct platform_device msm_device_ssbi6;
 extern struct platform_device msm_device_ssbi7;
+#endif
+#if defined(CONFIG_ARCH_MSM8X60)
+extern struct platform_device msm_device_ssbi1;
+extern struct platform_device msm_device_ssbi2;
+extern struct platform_device msm_device_ssbi3;
+#endif
+#endif
+
+#if defined(CONFIG_ARCH_MSM8X60)
+#if defined(CONFIG_SPI_QUP) || defined(CONFIG_SPI_QUP_MODULE)
+extern struct platform_device msm_gsbi1_qup_spi_device;
+#endif
 #endif
 
 #if defined(CONFIG_ARCH_MSM7X30)
@@ -80,9 +100,43 @@ extern unsigned msm_num_clocks_7x30;
 extern struct clk msm_clocks_8x50[];
 extern unsigned msm_num_clocks_8x50;
 
+extern struct clk msm_clocks_8x60[];
+extern unsigned msm_num_clocks_8x60;
 
 void __init msm_fb_register_device(char *name, void *data);
 void __init msm_camera_register_device(void *, uint32_t, void *);
 extern struct platform_device msm_device_touchscreen;
+
+#ifdef CONFIG_GPIOLIB
+#define MSM7200A_GPIO_PLATFORM_DATA(ix, begin, end, irq)		\
+	[ix] = {							\
+		.gpio_base	= begin,				\
+		.ngpio		= end - begin + 1,			\
+		.irq_base	= MSM_GPIO_TO_INT(begin),		\
+		.irq_summary	= irq,					\
+		.regs = {						\
+			.in		= GPIO_IN_ ## ix,		\
+			.out		= GPIO_OUT_ ## ix,		\
+			.oe		= GPIO_OE_ ## ix,		\
+			.int_status	= GPIO_INT_STATUS_ ## ix,	\
+			.int_clear	= GPIO_INT_CLEAR_ ## ix,	\
+			.int_en		= GPIO_INT_EN_ ## ix,		\
+			.int_edge	= GPIO_INT_EDGE_ ## ix,		\
+			.int_pos	= GPIO_INT_POS_ ## ix,		\
+		},							\
+	}
+
+#define MSM7200A_GPIO_DEVICE(ix, pdata)			\
+	{						\
+		.name		= "msm7200a-gpio",	\
+		.id		= ix,			\
+		.num_resources	= 0,			\
+		.dev = {				\
+			.platform_data = &pdata[ix],	\
+		},					\
+	}
+
+extern struct platform_device msm_gpio_devices[];
+#endif
 
 #endif

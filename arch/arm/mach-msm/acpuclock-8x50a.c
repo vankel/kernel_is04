@@ -1,58 +1,18 @@
 /* Copyright (c) 2009-2010, Code Aurora Forum. All rights reserved.
  *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are met:
- *     * Redistributions of source code must retain the above copyright
- *       notice, this list of conditions and the following disclaimer.
- *     * Redistributions in binary form must reproduce the above copyright
- *       notice, this list of conditions and the following disclaimer in the
- *       documentation and/or other materials provided with the distribution.
- *     * Neither the name of Code Aurora Forum nor
- *       the names of its contributors may be used to endorse or promote
- *       products derived from this software without specific prior written
- *       permission.
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 and
+ * only version 2 as published by the Free Software Foundation.
  *
- * Alternatively, provided that this notice is retained in full, this software
- * may be relicensed by the recipient under the terms of the GNU General Public
- * License version 2 ("GPL") and only version 2, in which case the provisions of
- * the GPL apply INSTEAD OF those given above.  If the recipient relicenses the
- * software under the GPL, then the identification text in the MODULE_LICENSE
- * macro must be changed to reflect "GPLv2" instead of "Dual BSD/GPL".  Once a
- * recipient changes the license terms to the GPL, subsequent recipients shall
- * not relicense under alternate licensing terms, including the BSD or dual
- * BSD/GPL terms.  In addition, the following license statement immediately
- * below and between the words START and END shall also then apply when this
- * software is relicensed under the GPL:
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * START
- *
- * This program is free software; you can redistribute it and/or modify it under
- * the terms of the GNU General Public License version 2 and only version 2 as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful, but WITHOUT
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
- * FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more
- * details.
- *
- * You should have received a copy of the GNU General Public License along with
- * this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
- *
- * END
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
- * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE
- * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
- * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
- * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
- * POSSIBILITY OF SUCH DAMAGE.
- *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+ * 02110-1301, USA.
  */
 
 #include <linux/kernel.h>
@@ -76,8 +36,8 @@
 #define COMPLEX_SLEW		7
 
 #define L_VAL_384MHZ		0xA
-#define L_VAL_768MHZ		0x14
-#define L_VAL_998MHZ		0x1A
+#define L_VAL_1497MHZ		0x27
+#define L_VAL_SCPLL_HW_MAX	L_VAL_1497MHZ
 
 /* SCPLL Modes. */
 #define SCPLL_POWER_DOWN	0
@@ -117,7 +77,7 @@ struct clkctl_acpu_speed {
 	unsigned int     acpuclk_src_div;
 	unsigned int     ahbclk_khz;
 	unsigned int     ahbclk_div;
-	unsigned int     axiclk_khz;
+	unsigned int     ebi1clk_khz;
 	unsigned int     core_src_sel;
 	unsigned int     l_value;
 	int              vdd;
@@ -125,28 +85,29 @@ struct clkctl_acpu_speed {
 };
 
 struct clkctl_acpu_speed acpu_freq_tbl[] = {
-	{ 0, 19200, ACPU_PLL_TCXO, 0, 0, 0, 0, 14000, 0, 0, 1000},
+	{ 0,  19200, ACPU_PLL_TCXO, 0, 0, 0, 0, 14000, 0, 0, 1225 },
 	/* Use AXI source. Row number in acpuclk_init() must match this. */
-	{ 0, 128000, ACPU_PLL_1, 1, 5, 0, 0, 14000, 2, 0, 1000},
-	{ 1, 245760, ACPU_PLL_0, 4, 0, 0, 0, 29000, 0, 0, 1000},
-	{ 1, 384000, ACPU_PLL_3, 0, 0, 0, 0, 58000, 1, 0xA, 1000},
-	{ 0, 422400, ACPU_PLL_3, 0, 0, 0, 0, 117000, 1, 0xB, 1000},
-	{ 0, 460800, ACPU_PLL_3, 0, 0, 0, 0, 117000, 1, 0xC, 1000},
-	{ 0, 499200, ACPU_PLL_3, 0, 0, 0, 0, 117000, 1, 0xD, 1025},
-	{ 0, 537600, ACPU_PLL_3, 0, 0, 0, 0, 117000, 1, 0xE, 1050},
-	{ 1, 576000, ACPU_PLL_3, 0, 0, 0, 0, 117000, 1, 0xF, 1050},
-	{ 0, 614400, ACPU_PLL_3, 0, 0, 0, 0, 117000, 1, 0x10, 1075},
-	{ 0, 652800, ACPU_PLL_3, 0, 0, 0, 0, 117000, 1, 0x11, 1100},
-	{ 0, 691200, ACPU_PLL_3, 0, 0, 0, 0, 117000, 1, 0x12, 1125},
-	{ 0, 729600, ACPU_PLL_3, 0, 0, 0, 0, 117000, 1, 0x13, 1150},
-	{ 1, 768000, ACPU_PLL_3, 0, 0, 0, 0, 128000, 1, 0x14, 1150},
-	{ 0, 806400, ACPU_PLL_3, 0, 0, 0, 0, 128000, 1, 0x15, 1175},
-	{ 0, 844800, ACPU_PLL_3, 0, 0, 0, 0, 128000, 1, 0x16, 1200},
-	{ 0, 883200, ACPU_PLL_3, 0, 0, 0, 0, 128000, 1, 0x17, 1225},
-	{ 0, 921600, ACPU_PLL_3, 0, 0, 0, 0, 128000, 1, 0x18, 1275},
-	{ 0, 960000, ACPU_PLL_3, 0, 0, 0, 0, 128000, 1, 0x19, 1275},
-	{ 1, 998400, ACPU_PLL_3, 0, 0, 0, 0, 128000, 1, 0x1A, 1275},
-	{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+	{ 0,  192000, ACPU_PLL_1, 1, 5, 0, 0, 14000, 2, 0, 1225 },
+	{ 1,  245760, ACPU_PLL_0, 4, 0, 0, 0, 29000, 0, 0, 1225 },
+	{ 1,  384000, ACPU_PLL_3, 0, 0, 0, 0, 58000, 1, 0xA, 1225 },
+	{ 0,  422400, ACPU_PLL_3, 0, 0, 0, 0, 117000, 1, 0xB, 1225 },
+	{ 0,  460800, ACPU_PLL_3, 0, 0, 0, 0, 117000, 1, 0xC, 1225 },
+	{ 0,  499200, ACPU_PLL_3, 0, 0, 0, 0, 117000, 1, 0xD, 1225 },
+	{ 0,  537600, ACPU_PLL_3, 0, 0, 0, 0, 117000, 1, 0xE, 1225 },
+	{ 1,  576000, ACPU_PLL_3, 0, 0, 0, 0, 117000, 1, 0xF, 1225 },
+	{ 0,  614400, ACPU_PLL_3, 0, 0, 0, 0, 117000, 1, 0x10, 1225 },
+	{ 0,  652800, ACPU_PLL_3, 0, 0, 0, 0, 117000, 1, 0x11, 1225 },
+	{ 0,  691200, ACPU_PLL_3, 0, 0, 0, 0, 117000, 1, 0x12, 1225 },
+	{ 0,  729600, ACPU_PLL_3, 0, 0, 0, 0, 117000, 1, 0x13, 1225 },
+	{ 1,  768000, ACPU_PLL_3, 0, 0, 0, 0, 128000, 1, 0x14, 1225 },
+	{ 0,  806400, ACPU_PLL_3, 0, 0, 0, 0, 128000, 1, 0x15, 1225 },
+	{ 0,  844800, ACPU_PLL_3, 0, 0, 0, 0, 128000, 1, 0x16, 1225 },
+	{ 0,  883200, ACPU_PLL_3, 0, 0, 0, 0, 160000, 1, 0x17, 1225 },
+	{ 0,  921600, ACPU_PLL_3, 0, 0, 0, 0, 160000, 1, 0x18, 1225 },
+	{ 0,  960000, ACPU_PLL_3, 0, 0, 0, 0, 192000, 1, 0x19, 1225 },
+	{ 1,  998400, ACPU_PLL_3, 0, 0, 0, 0, 192000, 1, 0x1A, 1225 },
+	{ 1, 1190400, ACPU_PLL_3, 0, 0, 0, 0, 259200, 1, 0x1F, 1225 },
+	{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
 };
 
 struct clock_state {
@@ -162,11 +123,11 @@ static struct clock_state drv_state = { 0 };
 
 unsigned long clk_get_max_axi_khz(void)
 {
-	return 128000;
+	return 192000;
 }
 EXPORT_SYMBOL(clk_get_max_axi_khz);
 
-unsigned long acpuclk_get_rate(void)
+unsigned long acpuclk_get_rate(int cpu)
 {
 	return drv_state.current_speed->acpuclk_khz;
 }
@@ -179,16 +140,16 @@ uint32_t acpuclk_get_switch_time(void)
 #define POWER_COLLAPSE_KHZ 128000
 unsigned long acpuclk_power_collapse(void)
 {
-	int ret = acpuclk_get_rate();
-	acpuclk_set_rate(POWER_COLLAPSE_KHZ, SETRATE_PC);
+	int ret = acpuclk_get_rate(smp_processor_id());
+	acpuclk_set_rate(smp_processor_id(), POWER_COLLAPSE_KHZ, SETRATE_PC);
 	return ret;
 }
 
 #define WAIT_FOR_IRQ_KHZ 128000
 unsigned long acpuclk_wait_for_irq(void)
 {
-	int ret = acpuclk_get_rate();
-	acpuclk_set_rate(WAIT_FOR_IRQ_KHZ, SETRATE_SWFI);
+	int ret = acpuclk_get_rate(smp_processor_id());
+	acpuclk_set_rate(smp_processor_id(), WAIT_FOR_IRQ_KHZ, SETRATE_SWFI);
 	return ret;
 }
 
@@ -286,7 +247,7 @@ static int acpuclk_set_vdd_level(int vdd)
 	}
 }
 
-int acpuclk_set_rate(unsigned long rate, enum setrate_reason reason)
+int acpuclk_set_rate(int cpu, unsigned long rate, enum setrate_reason reason)
 {
 	struct clkctl_acpu_speed *tgt_s, *strt_s;
 	int res, rc = 0;
@@ -353,11 +314,12 @@ int acpuclk_set_rate(unsigned long rate, enum setrate_reason reason)
 	if (reason == SETRATE_SWFI)
 		goto out;
 
-	if (strt_s->axiclk_khz != tgt_s->axiclk_khz) {
+	if (strt_s->ebi1clk_khz != tgt_s->ebi1clk_khz) {
 		res = ebi1_clk_set_min_rate(CLKVOTE_ACPUCLK,
-			tgt_s->axiclk_khz * 1000);
+			tgt_s->ebi1clk_khz * 1000);
 		if (res < 0)
-			pr_warning("Setting AXI min rate failed (%d)\n", res);
+			pr_warning("Setting EBI1/AXI min rate failed (%d)\n",
+									res);
 	}
 
 	/* Nothing else to do for power collapse */
@@ -388,8 +350,11 @@ static void __init scpll_init(void)
 	writel(SCPLL_STANDBY, SCPLL_CTL_ADDR);
 	udelay(10);
 
-	/* Calibrate SCPLL. Set range, start full calibration. */
-	regval = (L_VAL_998MHZ << 24) | (L_VAL_384MHZ << 16);
+	/* Calibrate the SCPLL to the maximum range supported by the h/w. We
+	 * might not use the full range of calibrated frequencies, but this
+	 * simplifies changes required for future increases in max CPU freq.
+	 */
+	regval = (L_VAL_SCPLL_HW_MAX << 24) | (L_VAL_384MHZ << 16);
 	writel(regval, SCPLL_CAL_ADDR);
 	writel(SCPLL_FULL_CAL, SCPLL_CTL_ADDR);
 
@@ -457,10 +422,13 @@ static void __init acpuclk_init(void)
 		return;
 	}
 
+	/* Set initial ACPU VDD. */
+	acpuclk_set_vdd_level(speed->vdd);
+
 	drv_state.current_speed = speed;
-	res = ebi1_clk_set_min_rate(CLKVOTE_ACPUCLK, speed->axiclk_khz * 1000);
+	res = ebi1_clk_set_min_rate(CLKVOTE_ACPUCLK, speed->ebi1clk_khz * 1000);
 	if (res < 0)
-		pr_warning("Setting AXI min rate failed (%d)\n", res);
+		pr_warning("Setting EBI1/AXI min rate failed (%d)\n", res);
 
 	pr_info("ACPU running at %d KHz\n", speed->acpuclk_khz);
 }

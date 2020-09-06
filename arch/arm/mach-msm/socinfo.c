@@ -1,57 +1,18 @@
-/* Copyright (c) 2009, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2009-2011, Code Aurora Forum. All rights reserved.
  *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are met:
- *     * Redistributions of source code must retain the above copyright
- *       notice, this list of conditions and the following disclaimer.
- *     * Redistributions in binary form must reproduce the above copyright
- *       notice, this list of conditions and the following disclaimer in the
- *       documentation and/or other materials provided with the distribution.
- *     * Neither the name of Code Aurora Forum nor
- *       the names of its contributors may be used to endorse or promote
- *       products derived from this software without specific prior written
- *       permission.
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 and
+ * only version 2 as published by the Free Software Foundation.
  *
- * Alternatively, provided that this notice is retained in full, this software
- * may be relicensed by the recipient under the terms of the GNU General Public
- * License version 2 ("GPL") and only version 2, in which case the provisions of
- * the GPL apply INSTEAD OF those given above.  If the recipient relicenses the
- * software under the GPL, then the identification text in the MODULE_LICENSE
- * macro must be changed to reflect "GPLv2" instead of "Dual BSD/GPL".  Once a
- * recipient changes the license terms to the GPL, subsequent recipients shall
- * not relicense under alternate licensing terms, including the BSD or dual
- * BSD/GPL terms.  In addition, the following license statement immediately
- * below and between the words START and END shall also then apply when this
- * software is relicensed under the GPL:
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * START
- *
- * This program is free software; you can redistribute it and/or modify it under
- * the terms of the GNU General Public License version 2 and only version 2 as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful, but WITHOUT
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
- * FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more
- * details.
- *
- * You should have received a copy of the GNU General Public License along with
- * this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
- *
- * END
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
- * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE
- * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
- * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
- * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
- * POSSIBILITY OF SUCH DAMAGE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+ * 02110-1301, USA.
  *
  */
 /*
@@ -227,7 +188,12 @@ uint32_t socinfo_get_platform_version(void)
 
 enum msm_cpu socinfo_get_msm_cpu(void)
 {
+#ifdef CONFIG_ARCH_MSM8X60
+	/* Hardcode CPU for 8x60, which doesn't support socinfo yet. */
+	return MSM_CPU_8X60;
+#else
 	return cur_cpu;
+#endif
 }
 
 static ssize_t
@@ -382,7 +348,7 @@ static struct sys_device soc_sys_device = {
 	.cls = &soc_sysdev_class,
 };
 
-static void __init socinfo_create_files(struct sys_device *dev,
+static int __init socinfo_create_files(struct sys_device *dev,
 					struct sysdev_attribute files[],
 					int size)
 {
@@ -392,12 +358,13 @@ static void __init socinfo_create_files(struct sys_device *dev,
 		if (err) {
 			pr_err("%s: sysdev_create_file(%s)=%d\n",
 			       __func__, files[i].attr.name, err);
-			return;
+			return err;
 		}
 	}
+	return 0;
 }
 
-static void __init socinfo_init_sysdev(void)
+static int __init socinfo_init_sysdev(void)
 {
 	int err;
 
@@ -405,34 +372,35 @@ static void __init socinfo_init_sysdev(void)
 	if (err) {
 		pr_err("%s: sysdev_class_register fail (%d)\n",
 		       __func__, err);
-		return;
+		return err;
 	}
 	err = sysdev_register(&soc_sys_device);
 	if (err) {
 		pr_err("%s: sysdev_register fail (%d)\n",
 		       __func__, err);
-		return;
+		return err;
 	}
 	socinfo_create_files(&soc_sys_device, socinfo_v1_files,
 				ARRAY_SIZE(socinfo_v1_files));
 	if (socinfo->v1.format < 2)
-		return;
+		return err;
 	socinfo_create_files(&soc_sys_device, socinfo_v2_files,
 				ARRAY_SIZE(socinfo_v2_files));
 
 	if (socinfo->v1.format < 3)
-		return;
+		return err;
 
 	socinfo_create_files(&soc_sys_device, socinfo_v3_files,
 				ARRAY_SIZE(socinfo_v3_files));
 
 	if (socinfo->v1.format < 4)
-		return;
+		return err;
 
-	socinfo_create_files(&soc_sys_device, socinfo_v4_files,
-				ARRAY_SIZE(socinfo_v4_files));
+        return socinfo_create_files(&soc_sys_device, socinfo_v4_files,
+                                ARRAY_SIZE(socinfo_v4_files));
 
 }
+
 
 int __init socinfo_init(void)
 {
@@ -461,8 +429,6 @@ int __init socinfo_init(void)
 
 	if (socinfo->v1.id < ARRAY_SIZE(cpu_of_id))
 		cur_cpu = cpu_of_id[socinfo->v1.id];
-
-	socinfo_init_sysdev();
 
 	switch (socinfo->v1.format) {
 	case 1:

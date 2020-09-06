@@ -1,61 +1,21 @@
 /* Copyright (c) 2009-2010, Code Aurora Forum. All rights reserved.
  *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are met:
- *     * Redistributions of source code must retain the above copyright
- *       notice, this list of conditions and the following disclaimer.
- *     * Redistributions in binary form must reproduce the above copyright
- *       notice, this list of conditions and the following disclaimer in the
- *       documentation and/or other materials provided with the distribution.
- *     * Neither the name of Code Aurora Forum nor
- *       the names of its contributors may be used to endorse or promote
- *       products derived from this software without specific prior written
- *       permission.
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 and
+ * only version 2 as published by the Free Software Foundation.
  *
- * Alternatively, provided that this notice is retained in full, this software
- * may be relicensed by the recipient under the terms of the GNU General Public
- * License version 2 ("GPL") and only version 2, in which case the provisions of
- * the GPL apply INSTEAD OF those given above.  If the recipient relicenses the
- * software under the GPL, then the identification text in the MODULE_LICENSE
- * macro must be changed to reflect "GPLv2" instead of "Dual BSD/GPL".  Once a
- * recipient changes the license terms to the GPL, subsequent recipients shall
- * not relicense under alternate licensing terms, including the BSD or dual
- * BSD/GPL terms.  In addition, the following license statement immediately
- * below and between the words START and END shall also then apply when this
- * software is relicensed under the GPL:
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * START
- *
- * This program is free software; you can redistribute it and/or modify it under
- * the terms of the GNU General Public License version 2 and only version 2 as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful, but WITHOUT
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
- * FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more
- * details.
- *
- * You should have received a copy of the GNU General Public License along with
- * this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
- *
- * END
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
- * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE
- * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
- * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
- * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
- * POSSIBILITY OF SUCH DAMAGE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+ * 02110-1301, USA.
  *
  */
 
-#include <mach/debug_audio_mm.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/miscdevice.h>
@@ -70,7 +30,7 @@
 #include <linux/completion.h>
 #include <linux/wait.h>
 #include <mach/qdsp5v2/voice.h>
-#include <mach/debug_audio_mm.h>
+#include <mach/debug_mm.h>
 
 struct voice_data {
 	void *handle; /* DALRPC handle */
@@ -97,8 +57,8 @@ struct voice_data {
 	uint32_t default_sample_val;
 	/* call status */
 	int v_call_status; /* Start or End */
-	s32 max_rx_vol;
-	s32 min_rx_vol;
+	s32 max_rx_vol[VOC_RX_VOL_ARRAY_NUM]; /* [0] is for NB, [1] for WB */
+	s32 min_rx_vol[VOC_RX_VOL_ARRAY_NUM];
 };
 
 static struct voice_data voice;
@@ -119,7 +79,7 @@ static int voice_cmd_change(void)
 	hdr.id = CMD_DEVICE_CHANGE;
 	hdr.data_len = 0;
 
-	MM_INFO("%s()\n", __func__);
+	MM_DBG("\n"); /* Macro prints the file name and function */
 
 	err = dalrpc_fcn_5(VOICE_DALRPC_CMD, v->handle, &hdr,
 			sizeof(struct voice_header));
@@ -134,8 +94,7 @@ static void voice_auddev_cb_function(u32 evt_id,
 			void *private_data)
 {
 	struct voice_data *v = &voice;
-	int rc = 0;
-	int vol;
+	int rc = 0, i;
 
 	MM_INFO("auddev_cb_function, evt_id=%d, dev_state=%d\n",
 		evt_id, v->dev_state);
@@ -190,6 +149,14 @@ static void voice_auddev_cb_function(u32 evt_id,
 		break;
 	case AUDDEV_EVT_DEV_RDY:
 		/* update the dev info */
+		if (evt_payload->voc_devinfo.dev_type == DIR_RX) {
+			for (i = 0; i < VOC_RX_VOL_ARRAY_NUM; i++) {
+				v->max_rx_vol[i] =
+					evt_payload->voc_devinfo.max_rx_vol[i];
+				v->min_rx_vol[i] =
+					evt_payload->voc_devinfo.min_rx_vol[i];
+			}
+		}
 		if (v->dev_state == DEV_CHANGE) {
 			if (evt_payload->voc_devinfo.dev_type == DIR_RX) {
 				v->dev_rx.dev_acdb_id =
@@ -199,10 +166,6 @@ static void voice_auddev_cb_function(u32 evt_id,
 				v->dev_rx.dev_id =
 				evt_payload->voc_devinfo.dev_id;
 				v->dev_rx.enabled = VOICE_DEV_ENABLED;
-				v->max_rx_vol =
-					evt_payload->voc_devinfo.max_rx_vol;
-				v->min_rx_vol =
-					evt_payload->voc_devinfo.min_rx_vol;
 			} else {
 				v->dev_tx.dev_acdb_id =
 					evt_payload->voc_devinfo.acdb_dev_id;
@@ -230,10 +193,6 @@ static void voice_auddev_cb_function(u32 evt_id,
 				v->dev_rx.dev_id =
 				evt_payload->voc_devinfo.dev_id;
 				v->dev_rx.enabled = VOICE_DEV_ENABLED;
-				v->max_rx_vol =
-					evt_payload->voc_devinfo.max_rx_vol;
-				v->min_rx_vol =
-					evt_payload->voc_devinfo.min_rx_vol;
 			} else {
 				v->dev_tx.dev_acdb_id =
 					evt_payload->voc_devinfo.acdb_dev_id;
@@ -264,16 +223,9 @@ static void voice_auddev_cb_function(u32 evt_id,
 		if (evt_payload->voc_devinfo.dev_type == DIR_TX)
 			v->dev_tx.mute =
 				evt_payload->voc_vm_info.dev_vm_val.mute;
-		else {
-			/* convert the vol from percentage to db */
-			vol = v->min_rx_vol + ((v->max_rx_vol - v->min_rx_vol) *
-				evt_payload->voc_vm_info.dev_vm_val.vol)/100;
-			MM_DBG("vol=%d, after convert vol2=%d \n",
-				evt_payload->voc_vm_info.dev_vm_val.vol, vol);
-			MM_DBG(" min vol=%d, max vol=%d\n",
-				v->min_rx_vol, v->max_rx_vol);
-			v->dev_rx.volume = (u32)vol;
-		}
+		else
+			v->dev_rx.volume = evt_payload->
+						voc_vm_info.dev_vm_val.vol;
 		/* send device info */
 		voice_cmd_device_info(v);
 		break;
@@ -375,6 +327,8 @@ static void voice_auddev_cb_function(u32 evt_id,
 			v->dev_tx.enabled = VOICE_DEV_DISABLED;
 			v->dev_state = DEV_CHANGE;
 			if (v->voc_state == VOICE_ACQUIRE) {
+				msm_snddev_enable_sidetone(v->dev_rx.dev_id,
+				0);
 				/* send device change to modem */
 				voice_cmd_change();
 				/* block to wait for CHANGE_START */
@@ -405,7 +359,7 @@ static void remote_cb_function(void *context, u32 param,
 
 	hdr = (struct voice_header *)evt_buf;
 
-	MM_INFO("%s() len=%d id=%d\n", __func__, len, hdr->id);
+	MM_INFO("len=%d id=%d\n", len, hdr->id);
 
 	if (len <= 0) {
 		MM_ERR("unexpected event with length %d \n", len);
@@ -461,7 +415,7 @@ static int voice_cmd_init(struct voice_data *v)
 	struct voice_init cmd;
 	int err;
 
-	MM_DBG("%s()\n", __func__);
+	MM_DBG("\n"); /* Macro prints the file name and function */
 
 	cmd.hdr.id = CMD_VOICE_INIT;
 	cmd.hdr.data_len = sizeof(struct voice_init) -
@@ -484,7 +438,7 @@ static int voice_cmd_acquire_done(struct voice_data *v)
 	hdr.id = CMD_ACQUIRE_DONE;
 	hdr.data_len = 0;
 
-	MM_INFO("%s()\n", __func__);
+	MM_INFO("\n"); /* Macro prints the file name and function */
 
 	/* Enable HW sidetone if device supports it  */
 	msm_snddev_enable_sidetone(v->dev_rx.dev_id, 1);
@@ -500,23 +454,32 @@ static int voice_cmd_acquire_done(struct voice_data *v)
 static int voice_cmd_device_info(struct voice_data *v)
 {
 	struct voice_device cmd;
-	int err;
+	int err, vol;
 
-	MM_INFO("%s(), tx_dev=%d, rx_dev=%d, tx_sample=%d, rx_sample=%d \n",
-	__func__, v->dev_tx.dev_acdb_id, v->dev_rx.dev_acdb_id,
-	v->dev_tx.sample, v->dev_rx.sample);
-	MM_INFO("rx_vol=%d, tx_mute=%d\n", v->dev_rx.volume, v->dev_tx.mute);
+	MM_INFO("tx_dev=%d, rx_dev=%d, tx_sample=%d, tx_mute=%d\n",
+			v->dev_tx.dev_acdb_id, v->dev_rx.dev_acdb_id,
+			v->dev_tx.sample, v->dev_tx.mute);
 
 	cmd.hdr.id = CMD_DEVICE_INFO;
 	cmd.hdr.data_len = sizeof(struct voice_device) -
 			sizeof(struct voice_header);
 	cmd.tx_device = v->dev_tx.dev_acdb_id;
 	cmd.rx_device = v->dev_rx.dev_acdb_id;
-	cmd.rx_volume = v->dev_rx.volume;
+	if (v->network == NETWORK_WCDMA_WB)
+		vol = v->min_rx_vol[VOC_WB_INDEX] +
+			((v->max_rx_vol[VOC_WB_INDEX] -
+			v->min_rx_vol[VOC_WB_INDEX]) * v->dev_rx.volume)/100;
+	else
+		vol = v->min_rx_vol[VOC_NB_INDEX] +
+			((v->max_rx_vol[VOC_NB_INDEX] -
+			v->min_rx_vol[VOC_NB_INDEX]) * v->dev_rx.volume)/100;
+	cmd.rx_volume = (u32)vol; /* in mb */
 	cmd.rx_mute = 0;
 	cmd.tx_mute = v->dev_tx.mute;
 	cmd.rx_sample = v->dev_rx.sample/1000;
 	cmd.tx_sample = v->dev_tx.sample/1000;
+
+	MM_DBG("rx_vol=%d, rx_sample=%d\n", cmd.rx_volume, v->dev_rx.sample);
 
 	err = dalrpc_fcn_5(VOICE_DALRPC_CMD, v->handle, &cmd,
 			 sizeof(struct voice_device));
@@ -532,7 +495,7 @@ void voice_change_sample_rate(struct voice_data *v)
 	int freq = 48000;
 	int rc = 0;
 
-	MM_INFO(" network =%d, vote freq=%d\n", v->network, freq);
+	MM_DBG("network =%d, vote freq=%d\n", v->network, freq);
 	if (freq != v->dev_tx.sample) {
 		rc = msm_snddev_request_freq(&freq, 0,
 				SNDDEV_CAP_TX, AUDDEV_CLNT_VOC);
@@ -555,7 +518,7 @@ static int voice_thread(void *data)
 		wait_for_completion(&v->complete);
 		init_completion(&v->complete);
 
-		MM_INFO(" voc_event=%d, voice state =%d, dev_event=%d\n",
+		MM_DBG(" voc_event=%d, voice state =%d, dev_event=%d\n",
 				v->voc_event, v->voc_state, v->dev_event);
 		switch (v->voc_event) {
 		case VOICE_ACQUIRE_START:
@@ -569,6 +532,9 @@ static int voice_thread(void *data)
 					rc = voice_cmd_device_info(v);
 					rc = voice_cmd_acquire_done(v);
 					v->voc_state = VOICE_ACQUIRE;
+					broadcast_event(
+					AUDDEV_EVT_VOICE_STATE_CHG,
+					VOICE_STATE_INCALL, SESSION_IGNORE);
 				} else {
 					rc = wait_event_interruptible(
 					v->dev_wait,
@@ -581,11 +547,19 @@ static int voice_thread(void *data)
 						atomic_dec(&v->rel_start_flag);
 						msm_snddev_withdraw_freq(0,
 						SNDDEV_CAP_TX, AUDDEV_CLNT_VOC);
+						broadcast_event(
+						AUDDEV_EVT_VOICE_STATE_CHG,
+						VOICE_STATE_OFFCALL,
+						SESSION_IGNORE);
 					} else {
 						voice_change_sample_rate(v);
 						rc = voice_cmd_device_info(v);
 						rc = voice_cmd_acquire_done(v);
 						v->voc_state = VOICE_ACQUIRE;
+						broadcast_event(
+						AUDDEV_EVT_VOICE_STATE_CHG,
+						VOICE_STATE_INCALL,
+						SESSION_IGNORE);
 					}
 				}
 			} else
@@ -599,6 +573,8 @@ static int voice_thread(void *data)
 				v->voc_state = VOICE_RELEASE;
 				msm_snddev_withdraw_freq(0, SNDDEV_CAP_TX,
 					AUDDEV_CLNT_VOC);
+				broadcast_event(AUDDEV_EVT_VOICE_STATE_CHG,
+					VOICE_STATE_OFFCALL, SESSION_IGNORE);
 			} else {
 				/* wait for the dev_state = RELEASE */
 				rc = wait_event_interruptible(v->dev_wait,
@@ -609,6 +585,8 @@ static int voice_thread(void *data)
 				v->voc_state = VOICE_RELEASE;
 				msm_snddev_withdraw_freq(0, SNDDEV_CAP_TX,
 					AUDDEV_CLNT_VOC);
+				broadcast_event(AUDDEV_EVT_VOICE_STATE_CHG,
+					VOICE_STATE_OFFCALL, SESSION_IGNORE);
 			}
 			if (atomic_read(&v->rel_start_flag))
 				atomic_dec(&v->rel_start_flag);
@@ -641,6 +619,8 @@ static int voice_thread(void *data)
 				voice_cmd_device_info(v);
 				/* update voice state */
 				v->voc_state = VOICE_ACQUIRE;
+				broadcast_event(AUDDEV_EVT_VOICE_STATE_CHG,
+					VOICE_STATE_INCALL, SESSION_IGNORE);
 			} else
 				MM_ERR("Get this event at the wrong state\n");
 			break;
@@ -656,9 +636,9 @@ static int voice_thread(void *data)
 
 static int __init voice_init(void)
 {
-	int rc;
+	int rc, i;
 	struct voice_data *v = &voice;
-	MM_INFO("%s\n", __func__);
+	MM_INFO("\n"); /* Macro prints the file name and function */
 
 	mutex_init(&voice.lock);
 	v->handle = NULL;
@@ -668,8 +648,11 @@ static int __init voice_init(void)
 	v->default_mute_val = 1;  /* default is mute */
 	v->default_vol_val = 0;
 	v->default_sample_val = 8000;
-	v->max_rx_vol = 0;
-	v->min_rx_vol = 0;
+	for (i = 0; i < VOC_RX_VOL_ARRAY_NUM; i++) {
+		v->max_rx_vol[i] = 0;
+		v->min_rx_vol[i] = 0;
+	}
+	v->network = NETWORK_GSM;
 
 	/* initialize dev_rx and dev_tx */
 	memset(&v->dev_tx, 0, sizeof(struct device_data));

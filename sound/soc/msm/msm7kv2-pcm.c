@@ -17,7 +17,6 @@
  */
 
 
-#include <mach/debug_audio_mm.h>
 #include <linux/init.h>
 #include <linux/err.h>
 #include <linux/module.h>
@@ -37,6 +36,7 @@
 
 #include "msm7kv2-pcm.h"
 #include <mach/qdsp5v2/audio_dev_ctl.h>
+#include <mach/debug_mm.h>
 
 #define HOSTPCM_STREAM_ID 5
 
@@ -278,7 +278,7 @@ static int msm_pcm_trigger(struct snd_pcm_substream *substream, int cmd)
 	case SNDRV_PCM_TRIGGER_RESUME:
 	case SNDRV_PCM_TRIGGER_PAUSE_RELEASE:
 		if ((substream->stream == SNDRV_PCM_STREAM_CAPTURE)
-			|| prtd->mmap_flag)
+			|| !prtd->mmap_flag)
 			break;
 		if (!prtd->out_needed) {
 			prtd->stopped = 0;
@@ -310,7 +310,8 @@ static int msm_pcm_trigger(struct snd_pcm_substream *substream, int cmd)
 	case SNDRV_PCM_TRIGGER_STOP:
 	case SNDRV_PCM_TRIGGER_SUSPEND:
 	case SNDRV_PCM_TRIGGER_PAUSE_PUSH:
-		if (substream->stream == SNDRV_PCM_STREAM_CAPTURE)
+		if ((substream->stream == SNDRV_PCM_STREAM_CAPTURE)
+			|| !prtd->mmap_flag)
 			break;
 		prtd->stopped = 1;
 		break;
@@ -607,11 +608,15 @@ static struct snd_pcm_ops msm_pcm_ops = {
 
 static int msm_pcm_remove(struct platform_device *devptr)
 {
+#if 0
 	struct snd_soc_device *socdev = platform_get_drvdata(devptr);
 	snd_soc_free_pcms(socdev);
 	kfree(socdev->codec);
 	platform_set_drvdata(devptr, NULL);
 	return 0;
+#endif
+	printk("DISABLED %s, not 32 compatible!!!!\n", __func__);
+	return -1;
 }
 
 static int pcm_preallocate_buffer(struct snd_pcm *pcm,
@@ -664,7 +669,7 @@ static int msm_pcm_new(struct snd_card *card,
 {
 	int ret = 0;
 	if (!card->dev->coherent_dma_mask)
-		card->dev->coherent_dma_mask = DMA_32BIT_MASK;
+		card->dev->coherent_dma_mask = DMA_BIT_MASK(32);
 
 	if (codec_dai->playback.channels_min) {
 		ret = pcm_preallocate_buffer(pcm,

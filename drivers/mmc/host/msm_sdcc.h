@@ -14,11 +14,6 @@
 #ifndef _MSM_SDCC_H
 #define _MSM_SDCC_H
 
-#define MSMSDCC_CRCI_SDC1	6
-#define MSMSDCC_CRCI_SDC2	7
-#define MSMSDCC_CRCI_SDC3	12
-#define MSMSDCC_CRCI_SDC4	13
-
 #define MMCIPOWER		0x000
 #define MCI_PWR_OFF		0x00
 #define MCI_PWR_UP		0x02
@@ -158,6 +153,12 @@
 	MCI_DATATIMEOUTMASK|MCI_TXUNDERRUNMASK|MCI_RXOVERRUNMASK|	\
 	MCI_CMDRESPENDMASK|MCI_CMDSENTMASK|MCI_DATAENDMASK|MCI_PROGDONEMASK)
 
+#define MCI_IRQ_PIO 	\
+	(MCI_RXDATAAVLBLMASK | MCI_TXDATAAVLBLMASK | 	\
+	MCI_RXFIFOEMPTYMASK | MCI_TXFIFOEMPTYMASK | MCI_RXFIFOFULLMASK |\
+	MCI_TXFIFOFULLMASK | MCI_RXFIFOHALFFULLMASK |			\
+	MCI_TXFIFOHALFEMPTYMASK | MCI_RXACTIVEMASK | MCI_TXACTIVEMASK)
+
 /*
  * The size of the FIFO in bytes.
  */
@@ -207,7 +208,6 @@ struct msmsdcc_curr_req {
 	unsigned int		xfer_remain;	/* Bytes remaining to send */
 	unsigned int		data_xfered;	/* Bytes acked by BLKEND irq */
 	int			got_dataend;
-	int			got_datablkend;
 	int			user_pages;
 };
 
@@ -245,9 +245,6 @@ struct msmsdcc_host {
 	int polling_enabled;
 #endif
 
-#ifdef CONFIG_MMC_MSM7X00A_RESUME_IN_WQ
-	struct work_struct	resume_task;
-#endif
 	struct tasklet_struct 	dma_tlet;
 
 #ifdef CONFIG_MMC_AUTO_SUSPEND
@@ -266,6 +263,10 @@ struct msmsdcc_host {
 	unsigned int	mci_irqenable;
 	unsigned int	dummy_52_needed;
 	unsigned int	dummy_52_state;
+	unsigned int	sdio_irq_disabled;
+	struct wake_lock	sdio_wlock;
+	struct wake_lock	sdio_suspend_wlock;
+	unsigned int    sdcc_suspending;
 
 };
 

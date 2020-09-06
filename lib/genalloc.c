@@ -85,7 +85,6 @@ void gen_pool_destroy(struct gen_pool *pool)
 	int bit, end_bit;
 
 
-	write_lock(&pool->lock);
 	list_for_each_safe(_chunk, _next_chunk, &pool->chunks) {
 		chunk = list_entry(_chunk, struct gen_pool_chunk, next_chunk);
 		list_del(&chunk->next_chunk);
@@ -96,7 +95,6 @@ void gen_pool_destroy(struct gen_pool *pool)
 
 		kfree(chunk);
 	}
-	write_unlock(&pool->lock);
 	kfree(pool);
 	return;
 }

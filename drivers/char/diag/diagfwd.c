@@ -1,57 +1,18 @@
 /* Copyright (c) 2008-2009, Code Aurora Forum. All rights reserved.
  *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are met:
- *     * Redistributions of source code must retain the above copyright
- *       notice, this list of conditions and the following disclaimer.
- *     * Redistributions in binary form must reproduce the above copyright
- *       notice, this list of conditions and the following disclaimer in the
- *       documentation and/or other materials provided with the distribution.
- *     * Neither the name of Code Aurora Forum nor
- *       the names of its contributors may be used to endorse or promote
- *       products derived from this software without specific prior written
- *       permission.
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 and
+ * only version 2 as published by the Free Software Foundation.
  *
- * Alternatively, provided that this notice is retained in full, this software
- * may be relicensed by the recipient under the terms of the GNU General Public
- * License version 2 ("GPL") and only version 2, in which case the provisions of
- * the GPL apply INSTEAD OF those given above.  If the recipient relicenses the
- * software under the GPL, then the identification text in the MODULE_LICENSE
- * macro must be changed to reflect "GPLv2" instead of "Dual BSD/GPL".  Once a
- * recipient changes the license terms to the GPL, subsequent recipients shall
- * not relicense under alternate licensing terms, including the BSD or dual
- * BSD/GPL terms.  In addition, the following license statement immediately
- * below and between the words START and END shall also then apply when this
- * software is relicensed under the GPL:
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * START
- *
- * This program is free software; you can redistribute it and/or modify it under
- * the terms of the GNU General Public License version 2 and only version 2 as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful, but WITHOUT
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
- * FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more
- * details.
- *
- * You should have received a copy of the GNU General Public License along with
- * this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
- *
- * END
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
- * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE
- * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
- * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
- * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
- * POSSIBILITY OF SUCH DAMAGE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+ * 02110-1301, USA.
  *
  */
 
@@ -74,51 +35,122 @@ MODULE_DESCRIPTION("Diag Char Driver");
 MODULE_LICENSE("GPL v2");
 MODULE_VERSION("1.0");
 
+int diag_debug_buf_idx;
+unsigned char diag_debug_buf[1024];
+
 /* Number of maximum USB requests that the USB layer should handle at
    one time. */
 #define MAX_DIAG_USB_REQUESTS 12
+static unsigned int buf_tbl_size = 8; /*Number of entries in table of buffers */
 
 #define CHK_OVERFLOW(bufStart, start, end, length) \
 ((bufStart <= start) && (end - start >= length)) ? 1 : 0
 
-static void diag_smd_send_req(int context)
+void __diag_smd_send_req(void)
 {
 	void *buf;
 
 	if (driver->ch && (!driver->in_busy)) {
 		int r = smd_read_avail(driver->ch);
 
-		if (r > USB_MAX_IN_BUF) {
-			printk(KERN_INFO "diag dropped num bytes = %d\n", r);
+	if (r > USB_MAX_IN_BUF) {
+		if (r < MAX_BUF_SIZE) {
+				printk(KERN_ALERT "\n diag: SMD sending in "
+					   "packets upto %d bytes", r);
+				driver->usb_buf_in = krealloc(
+					driver->usb_buf_in, r, GFP_KERNEL);
+		} else {
+			printk(KERN_ALERT "\n diag: SMD sending in "
+				 "packets more than %d bytes", MAX_BUF_SIZE);
 			return;
 		}
+	}
 		if (r > 0) {
 
 			buf = driver->usb_buf_in;
 			if (!buf) {
 				printk(KERN_INFO "Out of diagmem for a9\n");
 			} else {
-				if (context == SMD_CONTEXT)
-					smd_read_from_cb(driver->ch, buf, r);
-				else
-					smd_read(driver->ch, buf, r);
-				driver->in_busy = 1;
-				driver->usb_write_ptr->buf = buf;
+				APPEND_DEBUG('i');
+				smd_read(driver->ch, buf, r);
+				APPEND_DEBUG('j');
 				driver->usb_write_ptr->length = r;
-#ifdef DIAG_DEBUG
-				printk(KERN_INFO "writing data to USB,"
-						 " pkt length %d \n", r);
-				print_hex_dump(KERN_DEBUG, "Written Packet Data"
-					       " to USB: ", 16, 1,
-					       DUMP_PREFIX_ADDRESS, buf, r, 1);
-#endif
-				diag_write(driver->usb_write_ptr);
+				driver->in_busy = 1;
+				diag_device_write(buf, MODEM_DATA);
 			}
 		}
 	}
 }
 
-static void diag_smd_qdsp_send_req(int context)
+int diag_device_write(void *buf, int proc_num)
+{
+	int i, err = 0;
+
+	if (driver->logging_mode == USB_MODE) {
+		if (proc_num == APPS_DATA) {
+			driver->usb_write_ptr_svc = (struct diag_request *)
+			(diagmem_alloc(driver, sizeof(struct diag_request),
+				 POOL_TYPE_USB_STRUCT));
+			driver->usb_write_ptr_svc->length = driver->used;
+			driver->usb_write_ptr_svc->buf = buf;
+			err = diag_write(driver->usb_write_ptr_svc);
+		} else if (proc_num == MODEM_DATA) {
+				driver->usb_write_ptr->buf = buf;
+#ifdef DIAG_DEBUG
+				printk(KERN_INFO "writing data to USB,"
+						 " pkt length %d \n",
+				       driver->usb_write_ptr->length);
+				print_hex_dump(KERN_DEBUG, "Written Packet Data"
+					       " to USB: ", 16, 1, DUMP_PREFIX_
+					       ADDRESS, buf, driver->
+					       usb_write_ptr->length, 1);
+#endif
+			err = diag_write(driver->usb_write_ptr);
+		} else if (proc_num == QDSP_DATA) {
+			driver->usb_write_ptr_qdsp->buf = buf;
+			err = diag_write(driver->usb_write_ptr_qdsp);
+		}
+		APPEND_DEBUG('k');
+	} else if (driver->logging_mode == MEMORY_DEVICE_MODE) {
+		if (proc_num == APPS_DATA) {
+			for (i = 0; i < driver->poolsize_usb_struct; i++)
+				if (driver->buf_tbl[i].length == 0) {
+					driver->buf_tbl[i].buf = buf;
+					driver->buf_tbl[i].length =
+								 driver->used;
+#ifdef DIAG_DEBUG
+					printk(KERN_INFO "\n ENQUEUE buf ptr"
+						   " and length is %x , %d\n",
+						   (unsigned int)(driver->buf_
+				tbl[i].buf), driver->buf_tbl[i].length);
+#endif
+					break;
+				}
+		}
+		for (i = 0; i < driver->num_clients; i++)
+			if (driver->client_map[i] == driver->logging_process_id)
+				break;
+		if (i < driver->num_clients) {
+			driver->data_ready[i] |= MEMORY_DEVICE_LOG_TYPE;
+			wake_up_interruptible(&driver->wait_q);
+		} else
+			return -EINVAL;
+	} else if (driver->logging_mode == NO_LOGGING_MODE) {
+		if (proc_num == MODEM_DATA) {
+			driver->in_busy = 0;
+			queue_work(driver->diag_wq, &(driver->
+							diag_read_smd_work));
+		} else if (proc_num == QDSP_DATA) {
+			driver->in_busy_qdsp = 0;
+			queue_work(driver->diag_wq, &(driver->
+						diag_read_smd_qdsp_work));
+		}
+		err = -1;
+	}
+    return err;
+}
+
+void __diag_smd_qdsp_send_req(void)
 {
 	void *buf;
 
@@ -130,20 +162,16 @@ static void diag_smd_qdsp_send_req(int context)
 			return;
 		}
 		if (r > 0) {
-
 			buf = driver->usb_buf_in_qdsp;
 			if (!buf) {
 				printk(KERN_INFO "Out of diagmem for q6\n");
 			} else {
-				if (context == SMD_CONTEXT)
-					smd_read_from_cb(
-						driver->chqdsp, buf, r);
-				else
-					smd_read(driver->chqdsp, buf, r);
-				driver->in_busy_qdsp = 1;
-				driver->usb_write_ptr_qdsp->buf = buf;
+				APPEND_DEBUG('l');
+				smd_read(driver->chqdsp, buf, r);
+				APPEND_DEBUG('m');
 				driver->usb_write_ptr_qdsp->length = r;
-				diag_write(driver->usb_write_ptr_qdsp);
+				driver->in_busy_qdsp = 1;
+				diag_device_write(buf, QDSP_DATA);
 			}
 		}
 
@@ -354,7 +382,7 @@ static int diag_process_apps_pkt(unsigned char *buf, int len)
 		subsys_cmd_code = *(uint16_t *)temp;
 		temp += 2;
 
-		for (i = 0; i < REG_TABLE_SIZE; i++) {
+		for (i = 0; i < diag_max_registration; i++) {
 			if (driver->table[i].process_id != 0) {
 				if (driver->table[i].cmd_code ==
 				     cmd_code && driver->table[i].subsys_id ==
@@ -400,16 +428,19 @@ static int diag_process_apps_pkt(unsigned char *buf, int len)
 					}
 				} /* end of else-if */
 			} /* if(driver->table[i].process_id != 0) */
-		}  /* for (i = 0; i < REG_TABLE_SIZE; i++) */
+		}  /* for (i = 0; i < diag_max_registration; i++) */
 	} /* else */
 		return packet_type;
 }
 
-static void diag_process_hdlc(void *data, unsigned len)
+void diag_process_hdlc(void *data, unsigned len)
 {
 	struct diag_hdlc_decode_type hdlc;
 	int ret, type = 0;
-
+#ifdef DIAG_DEBUG
+	int i;
+	printk(KERN_INFO "\n HDLC decode function, len of data  %d\n", len);
+#endif
 	hdlc.dest_ptr = driver->hdlc_buf;
 	hdlc.dest_size = USB_MAX_OUT_BUF;
 	hdlc.src_ptr = data;
@@ -431,10 +462,17 @@ static void diag_process_hdlc(void *data, unsigned len)
 					   DUMP_PREFIX_ADDRESS, data, len, 1);
 		driver->debug_flag = 0;
 	}
-
+#ifdef DIAG_DEBUG
+	printk(KERN_INFO "\n hdlc.dest_idx = %d \n", hdlc.dest_idx);
+	for (i = 0; i < hdlc.dest_idx; i++)
+		printk(KERN_DEBUG "\t%x", *(((unsigned char *)
+							driver->hdlc_buf)+i));
+#endif
 	/* ignore 2 bytes for CRC, one for 7E and send */
 	if ((driver->ch) && (ret) && (type) && (hdlc.dest_idx > 3)) {
+		APPEND_DEBUG('g');
 		smd_write(driver->ch, driver->hdlc_buf, hdlc.dest_idx - 3);
+		APPEND_DEBUG('h');
 #ifdef DIAG_DEBUG
 		printk(KERN_INFO "writing data to SMD, pkt length %d \n", len);
 		print_hex_dump(KERN_DEBUG, "Written Packet Data to SMD: ", 16,
@@ -446,20 +484,25 @@ static void diag_process_hdlc(void *data, unsigned len)
 
 int diagfwd_connect(void)
 {
-	printk(KERN_DEBUG "diag: USB connected\n");
-	diag_open(driver->poolsize + 3); /* 2 for A9 ; 1 for q6*/
+	int err;
 
+	printk(KERN_DEBUG "diag: USB connected\n");
+	err = diag_open(driver->poolsize + 3); /* 2 for A9 ; 1 for q6*/
+	if (err)
+		printk(KERN_ERR "diag: USB port open failed");
 	driver->usb_connected = 1;
 	driver->in_busy = 0;
 	driver->in_busy_qdsp = 0;
 
 	/* Poll SMD channels to check for data*/
-	diag_smd_send_req(NON_SMD_CONTEXT);
-	diag_smd_qdsp_send_req(NON_SMD_CONTEXT);
+	queue_work(driver->diag_wq, &(driver->diag_read_smd_work));
+	queue_work(driver->diag_wq, &(driver->diag_read_smd_qdsp_work));
 
 	driver->usb_read_ptr->buf = driver->usb_buf_out;
 	driver->usb_read_ptr->length = USB_MAX_OUT_BUF;
+	APPEND_DEBUG('a');
 	diag_read(driver->usb_read_ptr);
+	APPEND_DEBUG('b');
 	return 0;
 }
 
@@ -482,14 +525,17 @@ int diagfwd_write_complete(struct diag_request *diag_write_ptr)
 	/* Need a context variable here instead */
 	if (buf == (void *)driver->usb_buf_in) {
 		driver->in_busy = 0;
-		diag_smd_send_req(NON_SMD_CONTEXT);
+		APPEND_DEBUG('o');
+		queue_work(driver->diag_wq, &(driver->diag_read_smd_work));
 	} else if (buf == (void *)driver->usb_buf_in_qdsp) {
 		driver->in_busy_qdsp = 0;
-		diag_smd_qdsp_send_req(NON_SMD_CONTEXT);
+		APPEND_DEBUG('p');
+		queue_work(driver->diag_wq, &(driver->diag_read_smd_qdsp_work));
 	} else {
 		diagmem_free(driver, (unsigned char *)buf, POOL_TYPE_HDLC);
 		diagmem_free(driver, (unsigned char *)diag_write_ptr,
 							 POOL_TYPE_USB_STRUCT);
+		APPEND_DEBUG('q');
 	}
 	return 0;
 }
@@ -497,8 +543,18 @@ int diagfwd_write_complete(struct diag_request *diag_write_ptr)
 int diagfwd_read_complete(struct diag_request *diag_read_ptr)
 {
 	int len = diag_read_ptr->actual;
+
+	APPEND_DEBUG('c');
+#ifdef DIAG_DEBUG
+	printk(KERN_INFO "read data from USB, pkt length %d \n",
+		    diag_read_ptr->actual);
+	print_hex_dump(KERN_DEBUG, "Read Packet Data from USB: ", 16, 1,
+		       DUMP_PREFIX_ADDRESS, diag_read_ptr->buf,
+		       diag_read_ptr->actual, 1);
+#endif
 	driver->read_len = len;
-	queue_work(driver->diag_wq , &(driver->diag_read_work));
+	if (driver->logging_mode == USB_MODE)
+		queue_work(driver->diag_wq , &(driver->diag_read_work));
 	return 0;
 }
 
@@ -511,13 +567,13 @@ static struct diag_operations diagfwdops = {
 
 static void diag_smd_notify(void *ctxt, unsigned event)
 {
-	diag_smd_send_req(SMD_CONTEXT);
+	queue_work(driver->diag_wq, &(driver->diag_read_smd_work));
 }
 
 #if defined(CONFIG_MSM_N_WAY_SMD)
 static void diag_smd_qdsp_notify(void *ctxt, unsigned event)
 {
-	diag_smd_qdsp_send_req(SMD_CONTEXT);
+	queue_work(driver->diag_wq, &(driver->diag_read_smd_qdsp_work));
 }
 #endif
 
@@ -566,22 +622,18 @@ static struct platform_driver msm_smd_ch1_driver = {
 
 void diag_read_work_fn(struct work_struct *work)
 {
+	APPEND_DEBUG('d');
 	diag_process_hdlc(driver->usb_buf_out, driver->read_len);
 	driver->usb_read_ptr->buf = driver->usb_buf_out;
 	driver->usb_read_ptr->length = USB_MAX_OUT_BUF;
+	APPEND_DEBUG('e');
 	diag_read(driver->usb_read_ptr);
-#ifdef DIAG_DEBUG
-	printk(KERN_INFO "read data from USB, pkt length %d \n",
-		    driver->usb_read_ptr->actual);
-	print_hex_dump(KERN_DEBUG, "Read Packet Data from USB: ", 16, 1,
-		       DUMP_PREFIX_ADDRESS, driver->usb_read_ptr->buf,
-		       driver->usb_read_ptr->actual, 1);
-#endif
+	APPEND_DEBUG('f');
 }
 
 void diagfwd_init(void)
 {
-
+	diag_debug_buf_idx = 0;
 	if (driver->usb_buf_out  == NULL &&
 	     (driver->usb_buf_out = kzalloc(USB_MAX_OUT_BUF,
 					 GFP_KERNEL)) == NULL)
@@ -604,12 +656,17 @@ void diagfwd_init(void)
 	    (driver->client_map = kzalloc
 	     ((driver->num_clients) * 4, GFP_KERNEL)) == NULL)
 		goto err;
+	if (driver->buf_tbl == NULL)
+			driver->buf_tbl = kzalloc(buf_tbl_size *
+			  sizeof(struct diag_write_device), GFP_KERNEL);
+	if (driver->buf_tbl == NULL)
+		goto err;
 	if (driver->data_ready == NULL &&
-	     (driver->data_ready = kzalloc(driver->num_clients,
+	     (driver->data_ready = kzalloc(driver->num_clients * 4,
 					    GFP_KERNEL)) == NULL)
 		goto err;
 	if (driver->table == NULL &&
-	     (driver->table = kzalloc(REG_TABLE_SIZE*
+	     (driver->table = kzalloc(diag_max_registration*
 				      sizeof(struct diag_master_table),
 				       GFP_KERNEL)) == NULL)
 		goto err;
@@ -649,6 +706,7 @@ err:
 		kfree(driver->log_masks);
 		kfree(driver->event_masks);
 		kfree(driver->client_map);
+		kfree(driver->buf_tbl);
 		kfree(driver->data_ready);
 		kfree(driver->table);
 		kfree(driver->pkt_buf);
@@ -679,6 +737,7 @@ void diagfwd_exit(void)
 	kfree(driver->log_masks);
 	kfree(driver->event_masks);
 	kfree(driver->client_map);
+	kfree(driver->buf_tbl);
 	kfree(driver->data_ready);
 	kfree(driver->table);
 	kfree(driver->pkt_buf);

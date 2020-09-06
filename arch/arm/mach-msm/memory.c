@@ -165,14 +165,14 @@ void *alloc_bootmem_aligned(unsigned long size, unsigned long alignment)
 	return (void *)addr;
 }
 
-#if defined(CONFIG_NPA_REMOTE)
+#if defined(CONFIG_MSM_NPA_REMOTE)
 struct npa_client *npa_memory_client;
 #endif
 
 static int change_memory_power_state(unsigned long start_pfn,
 	unsigned long nr_pages, int state)
 {
-#if defined(CONFIG_NPA_REMOTE)
+#if defined(CONFIG_MSM_NPA_REMOTE)
 	static atomic_t node_created_flag = ATOMIC_INIT(1);
 #else
 	unsigned long start;
@@ -181,7 +181,7 @@ static int change_memory_power_state(unsigned long start_pfn,
 #endif
 	int rc = 0;
 
-#if defined(CONFIG_NPA_REMOTE)
+#if defined(CONFIG_MSM_NPA_REMOTE)
 	if (atomic_dec_and_test(&node_created_flag)) {
 		/* Create NPA 'required' client. */
 		npa_memory_client = npa_create_sync_client(NPA_MEMORY_NODE_NAME,

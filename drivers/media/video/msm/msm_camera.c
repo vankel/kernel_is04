@@ -36,9 +36,12 @@
 #include <linux/poll.h>
 #include <media/msm_camera.h>
 #include <mach/camera.h>
+#include <linux/syscalls.h>
+#include <linux/hrtimer.h>
 DEFINE_MUTEX(hlist_mut);
 DEFINE_MUTEX(pp_prev_lock);
 DEFINE_MUTEX(pp_snap_lock);
+DEFINE_MUTEX(ctrl_cmd_lock);
 
 #define MSM_MAX_CAMERA_SENSORS 5
 #define CAMERA_STOP_SNAPSHOT 42
@@ -88,9 +91,9 @@ int g_v4l2_opencnt;
 
 static inline void free_qcmd(struct msm_queue_cmd *qcmd)
 {
-	if (!qcmd || !qcmd->on_heap)
+	if (!qcmd || !atomic_read(&qcmd->on_heap))
 		return;
-	if (!--qcmd->on_heap)
+	if (!atomic_sub_return(1, &qcmd->on_heap))
 		kfree(qcmd);
 }
 
@@ -143,6 +146,7 @@ static void msm_enqueue(struct msm_device_queue *queue,
 	spin_lock_irqsave(&__q->lock, flags);			\
 	CDBG("%s: draining queue %s\n", __func__, __q->name);	\
 	while (!list_empty(&__q->list)) {			\
+		__q->len--;					\
 		qcmd = list_first_entry(&__q->list,		\
 			struct msm_queue_cmd, member);		\
 		list_del_init(&qcmd->member);			\
@@ -453,6 +457,7 @@ static int __msm_get_frame(struct msm_sync *sync,
 		goto err;
 	}
 
+	frame->ts = qcmd->ts;
 	frame->buffer = (unsigned long)pmem_info.vaddr;
 	frame->y_off = pmem_info.y_off;
 	frame->cbcr_off = pmem_info.cbcr_off;
@@ -615,7 +620,7 @@ static struct msm_queue_cmd *__msm_control_nb(struct msm_sync *sync,
 	udata->value = udata + 1;
 	memcpy(udata->value, udata_to_copy->value, udata_to_copy->length);
 
-	qcmd->on_heap = 1;
+	atomic_set(&qcmd->on_heap, 1);
 
 	/* qcmd_resp will be set to NULL */
 	return __msm_control(sync, NULL, qcmd, 0);
@@ -632,7 +637,7 @@ static int msm_control(struct msm_control_device *ctrl_pmsm,
 	struct msm_ctrl_cmd udata;
 	struct msm_queue_cmd qcmd;
 	struct msm_queue_cmd *qcmd_resp = NULL;
-	uint8_t data[50];
+	uint8_t data[max_control_command_size];
 
 	CDBG("Inside msm_control\n");
 	if (copy_from_user(&udata, arg, sizeof(struct msm_ctrl_cmd))) {
@@ -645,7 +650,7 @@ static int msm_control(struct msm_control_device *ctrl_pmsm,
 	udata.value = data;
 	if (udata.type == CAMERA_STOP_SNAPSHOT)
 		sync->get_pic_abort = 1;
-	qcmd.on_heap = 0;
+        atomic_set(&qcmd.on_heap, 0);
 	qcmd.type = MSM_CAM_Q_CTRL;
 	qcmd.command = &udata;
 
@@ -780,6 +785,16 @@ static int msm_divert_snapshot(struct msm_sync *sync,
 
 	memset(&region, 0, sizeof(region));
 	buf.fmnum = msm_pmem_region_lookup(&sync->pmem_frames,
+					MSM_PMEM_THUMBNAIL,
+					&region, 1);
+	if (buf.fmnum == 1) {
+		buf.fthumnail.buffer = (uint32_t)region.info.vaddr;
+		buf.fthumnail.y_off  = region.info.y_off;
+		buf.fthumnail.cbcr_off = region.info.cbcr_off;
+		buf.fthumnail.fd = region.info.fd;
+	}
+
+	buf.fmnum = msm_pmem_region_lookup(&sync->pmem_frames,
 					MSM_PMEM_MAINIMG,
 					&region, 1);
 	if (buf.fmnum == 1) {
@@ -787,10 +802,7 @@ static int msm_divert_snapshot(struct msm_sync *sync,
 		buf.fmain.y_off  = region.info.y_off;
 		buf.fmain.cbcr_off = region.info.cbcr_off;
 		buf.fmain.fd = region.info.fd;
-	} else {
-		if (buf.fmnum > 1)
-			pr_err("%s: MSM_PMEM_MAINIMG lookup found %d\n",
-				__func__, buf.fmnum);
+		goto end;
 	}
 
 	buf.fmnum = msm_pmem_region_lookup(&sync->pmem_frames,
@@ -805,7 +817,7 @@ static int msm_divert_snapshot(struct msm_sync *sync,
 			__func__, buf.fmnum);
 		return -EIO;
 	}
-
+end:
 	CDBG("%s: snapshot copy_to_user!\n", __func__);
 	if (copy_to_user((void *)(se->stats_event.data), &buf, sizeof(buf))) {
 		ERR_COPY_TO_USER();
@@ -995,7 +1007,7 @@ static int msm_ctrl_cmd_done(struct msm_control_device *ctrl_pmsm,
 		return -EFAULT;
 	}
 
-	qcmd->on_heap = 0;
+        atomic_set(&qcmd->on_heap, 0);
 	qcmd->command = command;
 	uptr = command->value;
 
@@ -1872,7 +1884,9 @@ static long msm_ioctl_control(struct file *filep, unsigned int cmd,
 		/* Coming from control thread, may need to wait for
 		 * command status */
 		CDBG("calling msm_control kernel msm_ioctl_control\n");
+		mutex_lock(&ctrl_cmd_lock);
 		rc = msm_control(ctrl_pmsm, 1, argp);
+		mutex_unlock(&ctrl_cmd_lock);
 		break;
 	case MSM_CAM_IOCTL_CTRL_COMMAND_2:
 		/* Sends a message, returns immediately */
@@ -2034,7 +2048,7 @@ static void *msm_vfe_sync_alloc(int size,
 	struct msm_queue_cmd *qcmd =
 		kmalloc(sizeof(struct msm_queue_cmd) + size, gfp);
 	if (qcmd) {
-		qcmd->on_heap = 1;
+		atomic_set(&qcmd->on_heap, 1);
 		return qcmd + 1;
 	}
 	return NULL;
@@ -2046,7 +2060,7 @@ static void msm_vfe_sync_free(void *ptr)
 		struct msm_queue_cmd *qcmd =
 			(struct msm_queue_cmd *)ptr;
 		qcmd--;
-		if (qcmd->on_heap)
+		if (atomic_read(&qcmd->on_heap))
 			kfree(qcmd);
 	}
 }
@@ -2071,6 +2085,8 @@ static void msm_vfe_sync(struct msm_vfe_resp *vdata,
 	qcmd->type = qtype;
 	qcmd->command = vdata;
 
+	ktime_get_ts(&(qcmd->ts));
+
 	if (qtype != MSM_CAM_Q_VFE_MSG)
 		goto for_config;
 
@@ -2093,15 +2109,15 @@ static void msm_vfe_sync(struct msm_vfe_resp *vdata,
 			}
 		CDBG("%s: msm_enqueue frame_q\n", __func__);
 		msm_enqueue(&sync->frame_q, &qcmd->list_frame);
-		if (qcmd->on_heap)
-			qcmd->on_heap++;
+			if (atomic_read(&qcmd->on_heap))
+				atomic_add(1, &qcmd->on_heap);
 		break;
 
 		case VFE_MSG_OUTPUT_V:
 		CDBG("%s: msm_enqueue video frame_q\n", __func__);
 		msm_enqueue(&sync->frame_q, &qcmd->list_frame);
-		if (qcmd->on_heap)
-			qcmd->on_heap++;
+		if (atomic_read(&qcmd->on_heap))
+			atomic_add(1, &qcmd->on_heap);
 		break;
 
 		case VFE_MSG_SNAPSHOT:
@@ -2119,8 +2135,8 @@ static void msm_vfe_sync(struct msm_vfe_resp *vdata,
 			}
 
 		msm_enqueue(&sync->pict_q, &qcmd->list_pict);
-		if (qcmd->on_heap)
-			qcmd->on_heap++;
+		if (atomic_read(&qcmd->on_heap))
+			atomic_add(1, &qcmd->on_heap);
 		break;
 
 		case VFE_MSG_STATS_AWB:
@@ -2307,7 +2323,7 @@ static int __msm_v4l2_control(struct msm_sync *sync,
 	}
 	qcmd->type = MSM_CAM_Q_V4L2_REQ;
 	qcmd->command = out;
-	qcmd->on_heap = 1;
+	atomic_set(&qcmd->on_heap, 1);
 
 	if (out->type == V4L2_CAMERA_EXIT) {
 		rcmd = __msm_control(sync, NULL, qcmd, out->timeout_ms);
@@ -2568,6 +2584,15 @@ int msm_camera_drv_start(struct platform_device *dev,
 	}
 
 	camera_node++;
+	if (camera_node == 1) {
+		rc = add_axi_qos();
+		if (rc < 0) {
+			msm_sync_destroy(sync);
+			kfree(pmsm);
+			return rc;
+		}
+	}
+
 	list_add(&sync->list, &msm_sensors);
 	return rc;
 }

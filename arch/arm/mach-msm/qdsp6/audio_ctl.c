@@ -20,6 +20,7 @@
 #include <linux/msm_audio.h>
 
 #include <mach/msm_qdsp6_audio.h>
+#include <mach/debug_mm.h>
 
 #define BUFSZ (0)
 
@@ -36,21 +37,23 @@ static int q6_voice_start(void)
 	mutex_lock(&voice_lock);
 
 	if (voice_started) {
-		pr_err("voice: busy\n");
+		pr_err("[%s:%s] busy\n", __MM_FILE__, __func__);
 		rc = -EBUSY;
 		goto done;
 	}
 
 	voc_tx_clnt = q6voice_open(AUDIO_FLAG_WRITE);
 	if (!voc_tx_clnt) {
-		pr_err("voice: open voice tx failed.\n");
+		pr_err("[%s:%s] open voice tx failed.\n", __MM_FILE__,
+				__func__);
 		rc = -ENOMEM;
 		goto done;
 	}
 
 	voc_rx_clnt = q6voice_open(AUDIO_FLAG_READ);
 	if (!voc_rx_clnt) {
-		pr_err("voice: open voice rx failed.\n");
+		pr_err("[%s:%s] open voice rx failed.\n", __MM_FILE__,
+				__func__);
 		q6voice_close(voc_tx_clnt);
 		rc = -ENOMEM;
 	}
@@ -84,6 +87,7 @@ static int q6_ioctl(struct inode *inode, struct file *file,
 	int rc;
 	uint32_t n;
 	uint32_t id[2];
+	uint32_t mute_status;
 
 	switch (cmd) {
 	case AUDIO_SWITCH_DEVICE:
@@ -98,8 +102,21 @@ static int q6_ioctl(struct inode *inode, struct file *file,
 		break;
 	case AUDIO_SET_MUTE:
 		rc = copy_from_user(&n, (void *)arg, sizeof(n));
-		if (!rc)
-			rc = q6audio_set_tx_mute(n);
+		if (!rc) {
+			if (voice_started) {
+				if (n == 1)
+					mute_status = STREAM_MUTE;
+				else
+					mute_status = STREAM_UNMUTE;
+			} else {
+				if (n == 1)
+					mute_status = DEVICE_MUTE;
+				else
+					mute_status = DEVICE_UNMUTE;
+			}
+
+			rc = q6audio_set_tx_mute(mute_status);
+		}
 		break;
 	case AUDIO_UPDATE_ACDB:
 		rc = copy_from_user(&id, (void *)arg, sizeof(id));

@@ -142,6 +142,9 @@ static DEFINE_SPINLOCK(local_endpoints_lock);
 static DEFINE_SPINLOCK(remote_endpoints_lock);
 static DEFINE_SPINLOCK(server_list_lock);
 
+static LIST_HEAD(rpc_board_dev_list);
+static DEFINE_SPINLOCK(rpc_board_dev_list_lock);
+
 static struct workqueue_struct *rpcrouter_workqueue;
 
 static atomic_t next_xid = ATOMIC_INIT(1);
@@ -181,6 +184,12 @@ struct rr_context {
 };
 
 struct rr_context the_rr_context;
+
+struct rpc_board_dev_info {
+	struct list_head list;
+
+	struct rpc_board_dev *dev;
+};
 
 static struct platform_device rpcrouter_pdev = {
 	.name		= "oncrpc_router",
@@ -256,8 +265,8 @@ static int rpcrouter_send_control_msg(struct rpcrouter_xprt_info *xprt_info,
 		msleep(250);
 		spin_lock_irqsave(&xprt_info->lock, flags);
 	}
-	xprt_info->xprt->write(&hdr, sizeof(hdr));
-	xprt_info->xprt->write(msg, hdr.size);
+	xprt_info->xprt->write(&hdr, sizeof(hdr), HEADER);
+	xprt_info->xprt->write(msg, hdr.size, PAYLOAD);
 	spin_unlock_irqrestore(&xprt_info->lock, flags);
 
 	return 0;
@@ -394,6 +403,52 @@ static void rpcrouter_destroy_server(struct rr_server *server)
 	kfree(server);
 }
 
+int msm_rpc_add_board_dev(struct rpc_board_dev *devices, int num)
+{
+	unsigned long flags;
+	struct rpc_board_dev_info *board_info;
+	int i;
+
+	for (i = 0; i < num; i++) {
+		board_info = kzalloc(sizeof(struct rpc_board_dev_info),
+				     GFP_KERNEL);
+		if (!board_info)
+			return -ENOMEM;
+
+		board_info->dev = &devices[i];
+		D("%s: adding program %x\n", __func__, board_info->dev->prog);
+		spin_lock_irqsave(&rpc_board_dev_list_lock, flags);
+		list_add_tail(&board_info->list, &rpc_board_dev_list);
+		spin_unlock_irqrestore(&rpc_board_dev_list_lock, flags);
+	}
+
+	return 0;
+}
+EXPORT_SYMBOL(msm_rpc_add_board_dev);
+
+static void rpcrouter_register_board_dev(struct rr_server *server)
+{
+	struct rpc_board_dev_info *board_info;
+	unsigned long flags;
+	int rc;
+
+	spin_lock_irqsave(&rpc_board_dev_list_lock, flags);
+	list_for_each_entry(board_info, &rpc_board_dev_list, list) {
+		if (server->prog == board_info->dev->prog) {
+			D("%s: registering device %x\n",
+			  __func__, board_info->dev->prog);
+			list_del(&board_info->list);
+			rc = platform_device_register(&board_info->dev->pdev);
+			if (rc)
+				pr_err("%s: board dev register failed %d\n",
+				       __func__, rc);
+			kfree(board_info);
+			break;
+		}
+	}
+	spin_unlock_irqrestore(&rpc_board_dev_list_lock, flags);
+}
+
 static struct rr_server *rpcrouter_lookup_server(uint32_t prog, uint32_t ver)
 {
 	struct rr_server *server;
@@ -517,7 +572,9 @@ int msm_rpcrouter_destroy_local_endpoint(struct msm_rpc_endpoint *ept)
 
 	wake_lock_destroy(&ept->read_q_wake_lock);
 	wake_lock_destroy(&ept->reply_q_wake_lock);
+	spin_lock_irqsave(&local_endpoints_lock, flags);
 	list_del(&ept->list);
+	spin_unlock_irqrestore(&local_endpoints_lock, flags);
 	kfree(ept);
 	return 0;
 }
@@ -631,9 +688,7 @@ static int process_control_msg(struct rpcrouter_xprt_info *xprt_info,
 
 	switch (msg->cmd) {
 	case RPCROUTER_CTRL_CMD_HELLO:
-		RR("o HELLO\n");
-
-		RR("x HELLO\n");
+		RR("o HELLO PID %d\n", xprt_info->remote_pid);
 		memset(&ctl, 0, sizeof(ctl));
 		ctl.cmd = RPCROUTER_CTRL_CMD_HELLO;
 		rpcrouter_send_control_msg(xprt_info, &ctl);
@@ -717,6 +772,7 @@ static int process_control_msg(struct rpcrouter_xprt_info *xprt_info,
 						"rpcrouter:Client create"
 						"error (%d)\n", rc);
 			}
+			rpcrouter_register_board_dev(server);
 			schedule_work(&work_create_pdevs);
 			wake_up(&newserver_wait);
 		} else {
@@ -1213,14 +1269,14 @@ static int msm_rpc_write_pkt(
 	}
 
 	/* TODO: deal with full fifo */
-	xprt_info->xprt->write(hdr, sizeof(*hdr));
+	xprt_info->xprt->write(hdr, sizeof(*hdr), HEADER);
 	RAW_HDR("[w rr_h] "
 		    "ver=%i,type=%s,src_pid=%08x,src_cid=%08x,"
 		"confirm_rx=%i,size=%3i,dst_pid=%08x,dst_cid=%08x\n",
 		hdr->version, type_to_str(hdr->type),
 		hdr->src_pid, hdr->src_cid,
 		hdr->confirm_rx, hdr->size, hdr->dst_pid, hdr->dst_cid);
-	xprt_info->xprt->write(&pacmark, sizeof(pacmark));
+	xprt_info->xprt->write(&pacmark, sizeof(pacmark), PACKMARK);
 
 #if defined(CONFIG_MSM_ONCRPCROUTER_DEBUG)
 	if ((smd_rpcrouter_debug_mask & RAW_PMW) &&
@@ -1239,7 +1295,7 @@ static int msm_rpc_write_pkt(
 	}
 #endif
 
-	xprt_info->xprt->write(buffer, count);
+	xprt_info->xprt->write(buffer, count, PAYLOAD);
 	spin_unlock(&ept->restart_lock);
 	spin_unlock_irqrestore(&xprt_info->lock, flags);
 
@@ -1359,7 +1415,7 @@ int msm_rpc_write(struct msm_rpc_endpoint *ept, void *buffer, int count)
 	struct rr_header hdr;
 	struct rpc_request_hdr *rq = buffer;
 	struct rr_remote_endpoint *r_ept;
-	struct msm_rpc_reply *reply;
+	struct msm_rpc_reply *reply = NULL;
 	int max_tx;
 	int tx_cnt;
 	char *tx_buf;
@@ -1413,7 +1469,6 @@ int msm_rpc_write(struct msm_rpc_endpoint *ept, void *buffer, int count)
 		}
 		hdr.dst_pid = reply->pid;
 		hdr.dst_cid = reply->cid;
-		set_avail_reply(ept, reply);
 		IO("REPLY to xid=%d @ %d:%08x (%d bytes)\n",
 		   be32_to_cpu(rq->xid), hdr.dst_pid, hdr.dst_cid, count);
 	}
@@ -1466,9 +1521,15 @@ int msm_rpc_write(struct msm_rpc_endpoint *ept, void *buffer, int count)
 	}
 
  write_release_lock:
-
 	/* if reply, release wakelock after writing to the transport */
 	if (rq->type != 0) {
+		/* Upon failure, add reply tag to the pending list.
+		** Else add reply tag to the avail/free list. */
+		if (count < 0)
+			set_pend_reply(ept, reply);
+		else
+			set_avail_reply(ept, reply);
+
 		spin_lock_irqsave(&ept->reply_q_lock, flags);
 		if (list_empty(&ept->reply_pend_q)) {
 			D("%s: release reply lock on ept %p\n", __func__, ept);
@@ -1888,7 +1949,6 @@ int msm_rpc_clear_netreset(struct msm_rpc_endpoint *ept)
 {
 	unsigned long flags;
 	int rc = 1;
-	RR("RESET RESTART FLAG for EPT:%08x \n", (unsigned int)ept);
 	spin_lock_irqsave(&ept->restart_lock, flags);
 	if (ept->restart_state !=  RESTART_NORMAL) {
 		ept->restart_state &= ~RESTART_PEND_NTFY;
@@ -1909,6 +1969,28 @@ int msm_rpc_unregister_server(struct msm_rpc_endpoint *ept,
 		return -ENOENT;
 	rpcrouter_destroy_server(server);
 	return 0;
+}
+
+int msm_rpc_get_curr_pkt_size(struct msm_rpc_endpoint *ept)
+{
+	unsigned long flags;
+	struct rr_packet *pkt;
+	int rc = 0;
+
+	if (!ept)
+		return -EINVAL;
+
+	if (!msm_rpc_clear_netreset(ept))
+		return -ENETRESET;
+
+	spin_lock_irqsave(&ept->read_q_lock, flags);
+	if (!list_empty(&ept->read_q)) {
+		pkt = list_first_entry(&ept->read_q, struct rr_packet, list);
+		rc = pkt->length;
+	}
+	spin_unlock_irqrestore(&ept->read_q_lock, flags);
+
+	return rc;
 }
 
 static int msm_rpcrouter_modem_notify(struct notifier_block *this,
@@ -2113,7 +2195,6 @@ static int msm_rpcrouter_add_xprt(struct rpcrouter_xprt *xprt)
 	if (!xprt_info)
 		return -ENOMEM;
 
-	xprt->priv = xprt_info;
 	xprt_info->xprt = xprt;
 	xprt_info->initialized = 0;
 	xprt_info->remote_pid = -1;
@@ -2154,6 +2235,8 @@ static int msm_rpcrouter_add_xprt(struct rpcrouter_xprt *xprt)
 
 	queue_work(xprt_info->workqueue, &xprt_info->read_data);
 
+	xprt->priv = xprt_info;
+
 	return 0;
 }
 
@@ -2162,11 +2245,14 @@ void msm_rpcrouter_xprt_notify(struct rpcrouter_xprt *xprt, unsigned event)
 	struct rpcrouter_xprt_info *xprt_info = xprt->priv;
 
 	/* TODO: need to close the transport upon close event */
-	if (event == RPCROUTER_XPRT_EVENT_OPEN) {
+	if (event == RPCROUTER_XPRT_EVENT_OPEN)
 		msm_rpcrouter_add_xprt(xprt);
-		return;
-	}
 
+	if (!xprt_info)
+		return;
+
+	/* Check read_avail even for OPEN event to handle missed
+	   DATA events while processing the OPEN event*/
 	if (xprt->read_avail() >= xprt_info->need_len)
 		wake_lock(&xprt_info->wakelock);
 	wake_up(&xprt_info->read_wait);

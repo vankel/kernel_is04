@@ -24,10 +24,8 @@
 #include <linux/interrupt.h>
 #include <linux/smp.h>
 #include <linux/fs.h>
-#ifdef CONFIG_MEMORY_HOTPLUG
-#include <linux/memory_hotplug.h>
-#endif
 
+#include <asm/unified.h>
 #include <asm/cpu.h>
 #include <asm/cputype.h>
 #include <asm/elf.h>
@@ -43,9 +41,11 @@
 #include <asm/mach/irq.h>
 #include <asm/mach/time.h>
 #include <asm/traps.h>
+#include <asm/unwind.h>
 
 #include "compat.h"
 #include "atags.h"
+#include "tcm.h"
 
 #ifndef MEM_SIZE
 #define MEM_SIZE	(16*1024*1024)
@@ -329,25 +329,38 @@ void cpu_init(void)
 	}
 
 	/*
+	 * Define the placement constraint for the inline asm directive below.
+	 * In Thumb-2, msr with an immediate value is not allowed.
+	 */
+#ifdef CONFIG_THUMB2_KERNEL
+#define PLC	"r"
+#else
+#define PLC	"I"
+#endif
+
+	/*
 	 * setup stacks for re-entrant exception handlers
 	 */
 	__asm__ (
 	"msr	cpsr_c, %1\n\t"
-	"add	sp, %0, %2\n\t"
+	"add	r14, %0, %2\n\t"
+	"mov	sp, r14\n\t"
 	"msr	cpsr_c, %3\n\t"
-	"add	sp, %0, %4\n\t"
+	"add	r14, %0, %4\n\t"
+	"mov	sp, r14\n\t"
 	"msr	cpsr_c, %5\n\t"
-	"add	sp, %0, %6\n\t"
+	"add	r14, %0, %6\n\t"
+	"mov	sp, r14\n\t"
 	"msr	cpsr_c, %7"
 	    :
 	    : "r" (stk),
-	      "I" (PSR_F_BIT | PSR_I_BIT | IRQ_MODE),
+	      PLC (PSR_F_BIT | PSR_I_BIT | IRQ_MODE),
 	      "I" (offsetof(struct stack, irq[0])),
-	      "I" (PSR_F_BIT | PSR_I_BIT | ABT_MODE),
+	      PLC (PSR_F_BIT | PSR_I_BIT | ABT_MODE),
 	      "I" (offsetof(struct stack, abt[0])),
-	      "I" (PSR_F_BIT | PSR_I_BIT | UND_MODE),
+	      PLC (PSR_F_BIT | PSR_I_BIT | UND_MODE),
 	      "I" (offsetof(struct stack, und[0])),
-	      "I" (PSR_F_BIT | PSR_I_BIT | SVC_MODE)
+	      PLC (PSR_F_BIT | PSR_I_BIT | SVC_MODE)
 	    : "r14");
 }
 
@@ -427,34 +440,6 @@ static void __init early_mem(char **p)
 	arm_add_memory(start, size);
 }
 __early_param("mem=", early_mem);
-
-#ifdef CONFIG_MEMORY_HOTPLUG
-static void __init early_mem_reserved(char **p)
-{
-	unsigned int start;
-	unsigned int size;
-	unsigned int end;
-	unsigned int h_end;
-
-	start = PHYS_OFFSET;
-	size  = memparse(*p, p);
-	if (**p == '@')
-		start = memparse(*p + 1, p);
-
-	if (movable_reserved_start) {
-		end = start + size;
-		h_end = movable_reserved_start + movable_reserved_size;
-		end = max(end, h_end);
-		movable_reserved_start = min(movable_reserved_start,
-			(unsigned long)start);
-		movable_reserved_size = end - movable_reserved_start;
-	} else {
-		movable_reserved_start = start;
-		movable_reserved_size = size;
-	}
-}
-__early_param("mem_reserved=", early_mem_reserved);
-#endif
 
 /*
  * Initial parsing of the command line.
@@ -588,37 +573,6 @@ static int __init parse_tag_mem32(const struct tag *tag)
 
 __tagtable(ATAG_MEM, parse_tag_mem32);
 
-#ifdef CONFIG_MEMORY_HOTPLUG
-static int __init parse_tag_mem32_reserved(const struct tag *tag)
-{
-	unsigned int start;
-	unsigned int size;
-	unsigned int end;
-	unsigned int h_end;
-
-	start = tag->u.mem.start;
-	size = tag->u.mem.size;
-
-	if (movable_reserved_start) {
-		end = start + size;
-		h_end = movable_reserved_start + movable_reserved_size;
-		end = max(end, h_end);
-		movable_reserved_start = min(movable_reserved_start,
-			(unsigned long)start);
-		movable_reserved_size = end - movable_reserved_start;
-	} else {
-		movable_reserved_start = tag->u.mem.start;
-		movable_reserved_size = tag->u.mem.size;
-	}
-	printk(KERN_ALERT "reserved %lx at %lx for hotplug\n",
-		movable_reserved_size, movable_reserved_start);
-
-	return 0;
-}
-
-__tagtable(ATAG_MEM_RESERVED, parse_tag_mem32_reserved);
-#endif
-
 #if defined(CONFIG_VGA_CONSOLE) || defined(CONFIG_DUMMY_CONSOLE)
 struct screen_info screen_info = {
  .orig_video_lines	= 30,
@@ -747,6 +701,8 @@ void __init setup_arch(char **cmdline_p)
 	struct machine_desc *mdesc;
 	char *from = default_command_line;
 
+	unwind_init();
+
 	setup_processor();
 	mdesc = setup_machine(machine_arch_type);
 	machine_name = mdesc->name;
@@ -794,6 +750,7 @@ void __init setup_arch(char **cmdline_p)
 #endif
 
 	cpu_init();
+	tcm_init();
 
 	/*
 	 * Set up various architecture-specific pointers

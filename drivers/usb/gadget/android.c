@@ -102,15 +102,11 @@ struct android_dev {
 	int version;
 
 	int adb_enabled;
-	int nluns;
 	struct mutex lock;
 	struct android_usb_platform_data *pdata;
 	unsigned long functions;
 };
 
-static int rndis_enabled;
-static int acm_func_cnt;
-static int gser_func_cnt;
 static struct android_dev *_android_dev;
 
 /* string IDs are assigned dynamically */
@@ -160,7 +156,7 @@ static ssize_t  show_##function(struct device *dev,			\
 			val = 1;					\
 		n = n >> 4;						\
 	}								\
-	return sprintf(buf, "%d", val);					\
+	return sprintf(buf, "%d\n", val);				\
 									\
 }									\
 									\
@@ -201,10 +197,8 @@ static int  android_bind_config(struct usb_configuration *c)
 	struct android_dev *dev = _android_dev;
 	int ret = -EINVAL;
 	unsigned long n;
-	acm_func_cnt = 0;
-	gser_func_cnt = 0;
-	rndis_enabled = 0;
-	printk(KERN_DEBUG "android_bind_config\n");
+	pr_debug("android_bind_config c = 0x%x dev->cdev=0x%x\n",
+		(unsigned int) c, (unsigned int) dev->cdev);
 	n = dev->functions;
 	while (n) {
 		switch (n & 0x0F) {
@@ -214,8 +208,7 @@ static int  android_bind_config(struct usb_configuration *c)
 				return ret;
 			break;
 		case ANDROID_MSC:
-			ret = mass_storage_function_add(dev->cdev, c,
-								dev->nluns);
+			ret = mass_storage_function_add(dev->cdev, c);
 			if (ret)
 				return ret;
 			break;
@@ -223,13 +216,11 @@ static int  android_bind_config(struct usb_configuration *c)
 			ret = acm_bind_config(c, 0);
 			if (ret)
 				return ret;
-			acm_func_cnt++;
 			break;
 		case ANDROID_ACM_NMEA:
 			ret = acm_bind_config(c, 1);
 			if (ret)
 				return ret;
-			acm_func_cnt++;
 			break;
 #ifdef CONFIG_USB_ANDROID_DIAG
 		case ANDROID_DIAG:
@@ -243,13 +234,11 @@ static int  android_bind_config(struct usb_configuration *c)
 			ret = gser_bind_config(c, 0);
 			if (ret)
 				return ret;
-			gser_func_cnt++;
 			break;
 		case ANDROID_GENERIC_NMEA:
 			ret = gser_bind_config(c, 1);
 			if (ret)
 				return ret;
-			gser_func_cnt++;
 			break;
 #endif
 #ifdef CONFIG_USB_ANDROID_CDC_ECM
@@ -263,7 +252,7 @@ static int  android_bind_config(struct usb_configuration *c)
 		case ANDROID_RMNET:
 			ret = rmnet_function_add(c);
 			if (ret) {
-				printk(KERN_ERR "failed to add rmnet function\n");
+				pr_err("failed to add rmnet function\n");
 				return ret;
 			}
 			break;
@@ -273,7 +262,6 @@ static int  android_bind_config(struct usb_configuration *c)
 			ret = rndis_bind_config(c, hostaddr);
 			if (ret)
 				return ret;
-			rndis_enabled = 1;
 			break;
 #endif
 		default:
@@ -286,6 +274,46 @@ static int  android_bind_config(struct usb_configuration *c)
 
 }
 
+static int get_num_of_serial_ports(void)
+{
+	struct android_dev *dev = _android_dev;
+	unsigned long n = dev->functions;
+	unsigned ports = 0;
+
+	while (n) {
+		switch (n & 0x0F) {
+		case ANDROID_ACM_MODEM:
+		case ANDROID_ACM_NMEA:
+		case ANDROID_GENERIC_MODEM:
+		case ANDROID_GENERIC_NMEA:
+			ports++;
+		}
+		n = n >> 4;
+	}
+
+	return ports;
+}
+
+static int is_iad_enabled(void)
+{
+	struct android_dev *dev = _android_dev;
+	unsigned long n = dev->functions;
+
+	while (n) {
+		switch (n & 0x0F) {
+		case ANDROID_ACM_MODEM:
+		case ANDROID_ACM_NMEA:
+#ifdef CONFIG_USB_ANDROID_RNDIS
+		case ANDROID_RNDIS:
+#endif
+			return 1;
+		}
+		n = n >> 4;
+	}
+
+	return 0;
+}
+
 static struct usb_configuration android_config_driver = {
 	.label		= "android",
 	.bind		= android_bind_config,
@@ -295,14 +323,12 @@ static struct usb_configuration android_config_driver = {
 
 static int android_unbind(struct usb_composite_dev *cdev)
 {
-	if (acm_func_cnt || gser_func_cnt)
+	if (get_num_of_serial_ports())
 		gserial_cleanup();
-#if defined(CONFIG_USB_ANDROID_CDC_ECM) || defined(CONFIG_USB_ANDROID_RNDIS)
-	gether_cleanup();
-#endif
 
 	return 0;
 }
+
 static int  android_bind(struct usb_composite_dev *cdev)
 {
 	struct android_dev *dev = _android_dev;
@@ -312,7 +338,7 @@ static int  android_bind(struct usb_composite_dev *cdev)
 	int			ret;
 	int                     num_ports;
 
-	printk(KERN_INFO "android_bind\n");
+	pr_debug("android_bind\n");
 
 	/* Allocate string descriptor numbers ... note that string
 	 * contents can be overridden by the composite_dev glue.
@@ -336,24 +362,48 @@ static int  android_bind(struct usb_composite_dev *cdev)
 	device_desc.iSerialNumber = id;
 
 	device_desc.idProduct = __constant_cpu_to_le16(product_id);
-	if (gadget->ops->wakeup)
+	/* Supporting remote wakeup for mass storage only function
+	 * does n't make sense, since there are no notifications that
+	 * can be sent from mass storage during suspend */
+	if ((gadget->ops->wakeup) && (dev->functions != ANDROID_MSC))
 		android_config_driver.bmAttributes |= USB_CONFIG_ATT_WAKEUP;
-	if (dev->pdata->self_powered && !usb_gadget_set_selfpowered(gadget))
+	else
+		android_config_driver.bmAttributes &= ~USB_CONFIG_ATT_WAKEUP;
+
+	if (dev->pdata->self_powered && !usb_gadget_set_selfpowered(gadget)) {
 		android_config_driver.bmAttributes |= USB_CONFIG_ATT_SELFPOWER;
+		android_config_driver.bMaxPower	= 0x32; /* 100 mA */
+	}
 	dev->cdev = cdev;
+	pr_debug("android_bind assigned dev->cdev\n");
 	dev->gadget = gadget;
 
+	num_ports = get_num_of_serial_ports();
+	if (num_ports) {
+		ret = gserial_setup(cdev->gadget, num_ports);
+		if (ret < 0)
+			return ret;
+	}
+
+	/* Android user space allows USB tethering only when usb0 is listed
+	 * in network interfaces. Setup network link though RNDIS/CDC-ECM
+	 * is not listed in current composition. Network links is not setup
+	 * for every composition switch. It is setup one time and teared down
+	 * during module removal.
+	 */
 #if defined(CONFIG_USB_ANDROID_CDC_ECM) || defined(CONFIG_USB_ANDROID_RNDIS)
 	/* set up network link layer */
 	ret = gether_setup(cdev->gadget, hostaddr);
-	if (ret < 0)
+	if (ret && (ret != -EBUSY)) {
+		gserial_cleanup();
 		return ret;
+	}
 #endif
 
 	/* register our configuration */
 	ret = usb_add_config(cdev, &android_config_driver);
 	if (ret) {
-		printk(KERN_ERR "usb_add_config failed\n");
+		pr_err("usb_add_config failed\n");
 		return ret;
 	}
 
@@ -373,22 +423,16 @@ static int  android_bind(struct usb_composite_dev *cdev)
 		device_desc.bcdDevice = __constant_cpu_to_le16(0x9999);
 	}
 
-	num_ports = acm_func_cnt + gser_func_cnt;
-	if (acm_func_cnt || gser_func_cnt) {
-		ret = gserial_setup(cdev->gadget, num_ports);
-		if (ret < 0)
-			return ret;
-	}
-	if (acm_func_cnt || rndis_enabled) {
+	if (is_iad_enabled()) {
 		device_desc.bDeviceClass         = USB_CLASS_MISC;
-		device_desc.bDeviceSubClass      = USB_SUB_CLASS_COMMON;
-		device_desc.bDeviceProtocol      = USB_PROTOCOL_IAD;
+		device_desc.bDeviceSubClass      = 0x02;
+		device_desc.bDeviceProtocol      = 0x01;
 	} else {
 		device_desc.bDeviceClass         = USB_CLASS_PER_INTERFACE;
 		device_desc.bDeviceSubClass      = 0;
 		device_desc.bDeviceProtocol      = 0;
 	}
-
+	pr_debug("android_bind done\n");
 	return 0;
 }
 
@@ -400,7 +444,7 @@ static struct usb_composite_driver android_usb_driver = {
 	.unbind		= android_unbind,
 };
 
-static struct usb_composition *android_validate_product_id(unsigned short pid)
+struct usb_composition *android_validate_product_id(unsigned short pid)
 {
 	struct android_dev *dev = _android_dev;
 	struct usb_composition *fi;
@@ -408,6 +452,8 @@ static struct usb_composition *android_validate_product_id(unsigned short pid)
 
 	for (i = 0; i < dev->pdata->num_compositions; i++) {
 		fi = &dev->pdata->compositions[i];
+		pr_debug("pid=0x%x apid=0x%x\n",
+		       fi->product_id, fi->adb_product_id);
 		if ((fi->product_id == pid) || (fi->adb_product_id == pid))
 			return fi;
 	}
@@ -423,7 +469,7 @@ static int android_switch_composition(u16 pid)
 	/* Validate the prodcut id */
 	func = android_validate_product_id(pid);
 	if (!func) {
-		printk(KERN_ERR "%s: invalid product id %x\n", __func__, pid);
+		pr_err("%s: invalid product id %x\n", __func__, pid);
 		return -EINVAL;
 	}
 
@@ -471,7 +517,7 @@ static int android_set_sn(const char *kmessage, struct kernel_param *kp)
 	int len = strlen(kmessage);
 
 	if (len >= MAX_SERIAL_LEN) {
-		printk(KERN_ERR "serial number string too long\n");
+		pr_err("serial number string too long\n");
 		return -ENOSPC;
 	}
 
@@ -529,7 +575,7 @@ static int adb_enable_open(struct inode *ip, struct file *fp)
 		goto out;
 
 	dev->adb_enabled = 1;
-	printk(KERN_INFO "enabling adb\n");
+	pr_debug("enabling adb\n");
 	if (product_id)
 		ret = android_switch_composition(product_id);
 out:
@@ -548,7 +594,7 @@ static int adb_enable_release(struct inode *ip, struct file *fp)
 	if (!dev->adb_enabled)
 		goto out;
 
-	printk(KERN_INFO "disabling adb\n");
+	pr_debug("disabling adb\n");
 	dev->adb_enabled = 0;
 	if (product_id)
 		ret = android_switch_composition(product_id);
@@ -576,7 +622,7 @@ static int __init android_probe(struct platform_device *pdev)
 	struct android_dev *dev = _android_dev;
 	int ret;
 
-	printk(KERN_INFO "android_probe pdata: %p\n", pdata);
+	pr_debug("android_probe pdata: %p\n", pdata);
 
 	if (!pdata || !pdata->vendor_id || !pdata->product_name ||
 		!pdata->manufacturer_name)
@@ -587,7 +633,6 @@ static int __init android_probe(struct platform_device *pdev)
 	strings_dev[STRING_PRODUCT_IDX].s = pdata->product_name;
 	strings_dev[STRING_MANUFACTURER_IDX].s = pdata->manufacturer_name;
 	strings_dev[STRING_SERIAL_IDX].s = serial_number;
-	dev->nluns = pdata->nluns;
 	dev->pdata = pdata;
 
 	ret = sysfs_create_group(&pdev->dev.kobj, &android_attr_grp);
@@ -616,7 +661,7 @@ static int __init init(void)
 	struct usb_composition *func;
 	int ret;
 
-	printk(KERN_INFO "android init\n");
+	pr_debug("android init\n");
 
 	dev = kzalloc(sizeof(*dev), GFP_KERNEL);
 	if (!dev) {
@@ -650,7 +695,7 @@ static int __init init(void)
 	func = android_validate_product_id(product_id);
 	if (!func) {
 		mutex_unlock(&dev->lock);
-		printk(KERN_ERR "%s: invalid product id\n", __func__);
+		pr_err("%s: invalid product id\n", __func__);
 		ret = -EINVAL;
 		goto misc_deregister;
 	}
@@ -680,6 +725,10 @@ module_init(init);
 
 static void __exit cleanup(void)
 {
+#if defined(CONFIG_USB_ANDROID_CDC_ECM) || defined(CONFIG_USB_ANDROID_RNDIS)
+	gether_cleanup();
+#endif
+
 	usb_composite_unregister(&android_usb_driver);
 	misc_deregister(&adb_enable_device);
 	platform_driver_unregister(&android_platform_driver);

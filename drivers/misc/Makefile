@@ -21,13 +21,21 @@ obj-$(CONFIG_KGDB_TESTS)	+= kgdbts.o
 obj-$(CONFIG_SGI_XP)		+= sgi-xp/
 obj-$(CONFIG_SGI_GRU)		+= sgi-gru/
 obj-$(CONFIG_HP_ILO)		+= hpilo.o
+obj-$(CONFIG_ISL29003)		+= isl29003.o
+obj-$(CONFIG_EP93XX_PWM)	+= ep93xx_pwm.o
 obj-$(CONFIG_UID_STAT)		+= uid_stat.o
 obj-$(CONFIG_C2PORT)		+= c2port/
 obj-y				+= eeprom/
-obj-$(CONFIG_MSM_720P_CORE)	+= video_core/720p/
+obj-y				+= cb710/
+obj-$(CONFIG_WL127X_RFKILL)	+= wl127x-rfkill.o
+obj-$(CONFIG_APANIC)		+= apanic.o
+
+obj-$(CONFIG_VIDC) += vidc/
 obj-$(CONFIG_TSIF) += msm_tsif.o
 msm_tsif-objs := tsif.o
 
 obj-$(CONFIG_TSIF_CHRDEV) += tsif_chrdev.o
+obj-$(CONFIG_HAPTIC_ISA1200)		+= isa1200.o
 obj-$(CONFIG_PMIC8058_PWM) += pmic8058-pwm.o
-
+obj-$(CONFIG_PMIC8058_VIBRATOR) += pmic8058-vibrator.o
+obj-$(CONFIG_PMIC8058_NFC) += pmic8058-nfc.o

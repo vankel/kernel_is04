@@ -378,7 +378,8 @@ static int msm_sleep(int sleep_mode, uint32_t sleep_delay,
 		if (msm_pm_debug_mask & MSM_PM_DEBUG_CLOCK)
 			printk(KERN_INFO "msm_sleep(): exit power collapse %ld"
 			       "\n", pm_saved_acpu_clk_rate);
-		if (acpuclk_set_rate(pm_saved_acpu_clk_rate, SETRATE_PC) < 0)
+		if (acpuclk_set_rate(smp_processor_id(),
+				pm_saved_acpu_clk_rate, SETRATE_PC) < 0)
 			printk(KERN_ERR "msm_sleep(): clk_set_rate %ld "
 			       "failed\n", pm_saved_acpu_clk_rate);
 	}
@@ -544,7 +545,8 @@ void arch_idle(void)
 			printk(KERN_DEBUG "msm_sleep: clk swfi -> %ld\n",
 				saved_rate);
 		if (saved_rate
-		    && acpuclk_set_rate(saved_rate, SETRATE_SWFI) < 0)
+		    && acpuclk_set_rate(smp_processor_id(),
+				saved_rate, SETRATE_SWFI) < 0)
 			printk(KERN_ERR "msm_sleep(): clk_set_rate %ld "
 			       "failed\n", saved_rate);
 	} else {
@@ -678,7 +680,7 @@ static void msm_pm_power_off(void)
 	for (;;) ;
 }
 
-static void msm_pm_restart(char str)
+static void msm_pm_restart(char str, const char *cmd)
 {
 	msm_rpcrouter_close();
 	msm_proc_comm(PCOM_RESET_CHIP, &restart_reason, 0);
@@ -938,8 +940,10 @@ static int __init msm_pm_init(void)
 	return 0;
 }
 
-void __init msm_pm_set_platform_data(struct msm_pm_platform_data *data)
+void __init msm_pm_set_platform_data(
+	struct msm_pm_platform_data *data, int count)
 {
+	BUG_ON(MSM_PM_SLEEP_MODE_NR != count);
 	msm_pm_modes = data;
 }
 

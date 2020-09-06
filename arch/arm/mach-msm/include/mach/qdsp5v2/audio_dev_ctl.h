@@ -1,28 +1,29 @@
 /* Copyright (c) 2009-2010, Code Aurora Forum. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are met:
+ * modification, are permitted provided that the following conditions are
+ * met:
  *     * Redistributions of source code must retain the above copyright
  *       notice, this list of conditions and the following disclaimer.
- *     * Redistributions in binary form must reproduce the above copyright
- *       notice, this list of conditions and the following disclaimer in the
- *       documentation and/or other materials provided with the distribution.
- *     * Neither the name of Code Aurora nor
- *       the names of its contributors may be used to endorse or promote
- *       products derived from this software without specific prior written
- *       permission.
+ *     * Redistributions in binary form must reproduce the above
+ *       copyright notice, this list of conditions and the following
+ *       disclaimer in the documentation and/or other materials provided
+ *       with the distribution.
+ *     * Neither the name of Code Aurora Forum, Inc. nor the names of its
+ *       contributors may be used to endorse or promote products derived
+ *       from this software without specific prior written permission.
  *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
- * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
- * NON-INFRINGEMENT ARE DISCLAIMED.  IN NO EVENT SHALL THE COPYRIGHT OWNER OR
- * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
- * EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
- * PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS;
- * OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
- * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
- * OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
- * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * THIS SOFTWARE IS PROVIDED "AS IS" AND ANY EXPRESS OR IMPLIED
+ * WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
+ * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT
+ * ARE DISCLAIMED.  IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS
+ * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR
+ * BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+ * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
+ * OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
+ * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
  */
 #ifndef __MACH_QDSP5_V2_SNDDEV_H
@@ -32,6 +33,15 @@
 #define AUDIO_DEV_CTL_MAX_DEV 64
 #define DIR_TX	2
 #define DIR_RX	1
+
+#define DEVICE_IGNORE	0xff
+#define SESSION_IGNORE 0x00000000
+
+#define VOICE_STATE_INVALID 0x0
+#define VOICE_STATE_INCALL 0x1
+#define VOICE_STATE_OFFCALL 0x2
+#define MAX_COPP_NODE_SUPPORTED 6
+#define MAX_AUDREC_SESSIONS 2
 
 struct msm_snddev_info {
 	const char *name;
@@ -44,6 +54,7 @@ struct msm_snddev_info {
 		int (*close)(struct msm_snddev_info *);
 		int (*set_freq)(struct msm_snddev_info *, u32);
 		int (*enable_sidetone)(struct msm_snddev_info *, u32);
+		int (*set_device_volume)(struct msm_snddev_info *, u32);
 	} dev_ops;
 	u8 opened;
 	void *private_data;
@@ -51,8 +62,9 @@ struct msm_snddev_info {
 	u32 sample_rate;
 	u32 set_sample_rate;
 	u32 sessions;
-	s32 max_voc_rx_vol;
-	s32 min_voc_rx_vol;
+	int usage_count;
+	s32 max_voc_rx_vol[VOC_RX_VOL_ARRAY_NUM]; /* [0] is for NB,[1] for WB */
+	s32 min_voc_rx_vol[VOC_RX_VOL_ARRAY_NUM];
 };
 
 struct msm_volume {
@@ -86,8 +98,9 @@ struct auddev_evt_voc_devinfo {
 	u32 dev_type;           /* Rx or Tx */
 	u32 acdb_dev_id;        /* acdb id of device */
 	u32 dev_sample;         /* Sample rate of device */
-	s32 max_rx_vol; 	/* unit is mb (milibel */
-	s32 min_rx_vol;		/* unit is mb */
+	s32 max_rx_vol[VOC_RX_VOL_ARRAY_NUM]; 	/* unit is mb (milibel),
+						[0] is for NB, other for WB */
+	s32 min_rx_vol[VOC_RX_VOL_ARRAY_NUM];	/* unit is mb */
 	u32 dev_id;             /* registered device id */
 };
 
@@ -96,6 +109,7 @@ struct auddev_evt_audcal_info {
 	u32 acdb_id;
 	u32 sample_rate;
 	u32 dev_type;
+	u32 sessions;
 };
 
 union msm_vol_mute {
@@ -121,6 +135,7 @@ union auddev_evt_data {
 	struct auddev_evt_freq_info freq_info;
 	u32 routing_id;
 	s32 session_vol;
+	s32 voice_state;
 	struct auddev_evt_audcal_info audcal_info;
 };
 
@@ -138,6 +153,7 @@ struct message_header {
 #define AUDDEV_EVT_END_VOICE		0x40	/* voice call end */
 #define AUDDEV_EVT_STREAM_VOL_CHG	0x80 	/* device volume changed */
 #define AUDDEV_EVT_FREQ_CHG		0x100	/* Change in freq */
+#define AUDDEV_EVT_VOICE_STATE_CHG	0x200   /* Change in voice state */
 
 #define AUDDEV_CLNT_VOC 		0x1	/* Vocoder clients */
 #define AUDDEV_CLNT_DEC 		0x2	/* Decoder clients */
@@ -159,7 +175,6 @@ struct msm_snd_evt_listner {
 };
 
 struct event_listner {
-	struct mutex listner_lock;
 	struct msm_snd_evt_listner *cb;
 	u32 num_listner;
 	int state; /* Call state */ /* TODO remove this if not req*/
@@ -173,6 +188,7 @@ int auddev_register_evt_listner(u32 evt_id, u32 clnt_type, u32 clnt_id,
 		void *private_data);
 int auddev_unregister_evt_listner(u32 clnt_type, u32 clnt_id);
 void mixer_post_event(u32 evt_id, u32 dev_id);
+void broadcast_event(u32 evt_id, u32 dev_id, u32 session_id);
 int msm_snddev_request_freq(int *freq, u32 session_id,
 			u32 capability, u32 clnt_type);
 int msm_snddev_withdraw_freq(u32 session_id,
@@ -182,4 +198,5 @@ int msm_get_voc_freq(int *tx_freq, int *rx_freq);
 int msm_snddev_get_enc_freq(int session_id);
 int msm_set_voice_vol(int dir, s32 volume);
 int msm_set_voice_mute(int dir, int mute);
+int msm_get_voice_state(void);
 #endif

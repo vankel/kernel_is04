@@ -21,7 +21,6 @@
 #include <mach/clk.h>
 
 #include "clock-pcom.h"
-#include "clock-7x30.h"
 
 #define CLKFLAG_INVERT			0x00000001
 #define CLKFLAG_NOINVERT		0x00000002
@@ -43,6 +42,7 @@ struct clk_ops {
 	int (*set_max_rate)(unsigned id, unsigned rate);
 	int (*set_flags)(unsigned id, unsigned flags);
 	unsigned (*get_rate)(unsigned id);
+	signed (*measure_rate)(unsigned id);
 	unsigned (*is_enabled)(unsigned id);
 	long (*round_rate)(unsigned id, unsigned rate);
 };
@@ -91,6 +91,8 @@ enum {
 	PLL_4,
 	PLL_5,
 	PLL_6,
+	PLL_7,
+	PLL_8,
 	NUM_PLL
 };
 
@@ -99,6 +101,18 @@ enum clkvote_client {
 	CLKVOTE_PMQOS,
 	CLKVOTE_MAX,
 };
+
+extern unsigned msm_num_clocks;
+extern struct clk *msm_clocks;
+extern struct clk_ops clk_ops_remote;
+
+#if defined(CONFIG_ARCH_MSM7X30) || defined(CONFIG_ARCH_MSM8X60)
+void msm_clk_soc_init(void);
+void msm_clk_soc_set_ops(struct clk *clk);
+#else
+static inline void msm_clk_soc_init(void) { }
+static inline void msm_clk_soc_set_ops(struct clk *clk) { }
+#endif
 
 int msm_clock_require_tcxo(unsigned long *reason, int nbits);
 int msm_clock_get_name(uint32_t id, char *name, uint32_t size);

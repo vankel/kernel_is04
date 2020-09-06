@@ -1,57 +1,18 @@
 /* Copyright (c) 2009, Code Aurora Forum. All rights reserved.
  *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are met:
- *     * Redistributions of source code must retain the above copyright
- *       notice, this list of conditions and the following disclaimer.
- *     * Redistributions in binary form must reproduce the above copyright
- *       notice, this list of conditions and the following disclaimer in the
- *       documentation and/or other materials provided with the distribution.
- *     * Neither the name of Code Aurora Forum nor
- *       the names of its contributors may be used to endorse or promote
- *       products derived from this software without specific prior written
- *       permission.
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 and
+ * only version 2 as published by the Free Software Foundation.
  *
- * Alternatively, provided that this notice is retained in full, this software
- * may be relicensed by the recipient under the terms of the GNU General Public
- * License version 2 ("GPL") and only version 2, in which case the provisions of
- * the GPL apply INSTEAD OF those given above.  If the recipient relicenses the
- * software under the GPL, then the identification text in the MODULE_LICENSE
- * macro must be changed to reflect "GPLv2" instead of "Dual BSD/GPL".  Once a
- * recipient changes the license terms to the GPL, subsequent recipients shall
- * not relicense under alternate licensing terms, including the BSD or dual
- * BSD/GPL terms.  In addition, the following license statement immediately
- * below and between the words START and END shall also then apply when this
- * software is relicensed under the GPL:
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * START
- *
- * This program is free software; you can redistribute it and/or modify it under
- * the terms of the GNU General Public License version 2 and only version 2 as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful, but WITHOUT
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
- * FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more
- * details.
- *
- * You should have received a copy of the GNU General Public License along with
- * this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
- *
- * END
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
- * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE
- * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
- * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
- * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
- * POSSIBILITY OF SUCH DAMAGE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+ * 02110-1301, USA.
  *
  */
 
@@ -83,7 +44,6 @@
 #include <mach/msm_serial_hs.h>
 #include <mach/msm_spi.h>
 #include <linux/spi/spi.h>
-#include <mach/s1r72v05.h>
 #include <mach/rpc_hsusb.h>
 
 #include "devices.h"
@@ -682,77 +642,6 @@ cpld_base_exit:
 	return comet_cpld_base_addr;
 }
 
-#define S1R72V05_IRQ_GPIO 99
-
-static int comet_init_s1r72v05(void)
-{
-	int rc;
-	u16 per_enable;
-	u8 irq_gpio = S1R72V05_IRQ_GPIO;
-
-	per_enable = readw(cpld_base + COMET_CPLD_PER_ENABLE);
-	per_enable |= COMET_CPLD_PER_ENABLE_HDD | COMET_CPLD_PER_ENABLE_IDE;
-	writew(per_enable,
-	       cpld_base + COMET_CPLD_PER_ENABLE);
-	cpld_info->per_reset_all_reset &= ~COMET_CPLD_PER_RESET_IDE;
-	writew(cpld_info->per_reset_all_reset,
-	       cpld_base + COMET_CPLD_PER_RESET);
-
-	rc = gpio_request(irq_gpio, "ide_s1r72v05_irq");
-	if (rc) {
-		pr_err("Failed to request GPIO pin %d (rc=%d)\n",
-		       irq_gpio, rc);
-		goto err;
-	}
-
-	if (gpio_tlmm_config(GPIO_CFG(irq_gpio,
-				      0, GPIO_INPUT, GPIO_NO_PULL,
-				      GPIO_2MA),
-			     GPIO_ENABLE)) {
-		printk(KERN_ALERT
-		       "s1r72v05: Could not configure IRQ gpio\n");
-		goto err;
-	}
-
-	if (gpio_configure(irq_gpio, IRQF_TRIGGER_FALLING)) {
-		printk(KERN_ALERT
-		       "s1r72v05: Could not set IRQ polarity\n");
-		goto err;
-	}
-	return 0;
-
-err:
-	gpio_free(irq_gpio);
-	return -ENODEV;
-}
-
-static struct resource s1r72v05_resources[] = {
-	[0] = {
-		.start = 0x70000000,
-		.end = 0x70000000 + 0xFF,
-		.flags = IORESOURCE_MEM,
-	},
-	[1] = {
-		.start = MSM_GPIO_TO_INT(S1R72V05_IRQ_GPIO),
-		.end = S1R72V05_IRQ_GPIO,
-		.flags = IORESOURCE_IRQ,
-	},
-};
-
-static struct s1r72v05_platform_data s1r72v05_data = {
-	.gpio_setup = comet_init_s1r72v05,
-};
-
-static struct platform_device s1r72v05_device = {
-	.name           = "s1r72v05",
-	.id             = 0,
-	.num_resources  = ARRAY_SIZE(s1r72v05_resources),
-	.resource       = s1r72v05_resources,
-	.dev            = {
-		.platform_data          = &s1r72v05_data,
-	},
-};
-
 static struct msm_serial_hs_platform_data msm_uart_dm1_pdata = {
 	.wakeup_irq = MSM_GPIO_TO_INT(45),
 	.inject_rx_on_wakeup = 1,
@@ -918,7 +807,6 @@ static struct platform_device *devices[] __initdata = {
 	&msm_device_smd,
 	&msm_device_dmov,
 	&smc911x_device,
-	&s1r72v05_device,
 	&android_pmem_kernel_ebi1_device,
 	&android_pmem_device,
 	&android_pmem_adsp_device,
@@ -1501,7 +1389,7 @@ static void __init comet_init(void)
 				ARRAY_SIZE(msm_i2c_board_info));
 	spi_register_board_info(msm_spi_board_info,
 				ARRAY_SIZE(msm_spi_board_info));
-	msm_pm_set_platform_data(msm_pm_data);
+	msm_pm_set_platform_data(msm_pm_data, ARRAY_SIZE(msm_pm_data));
 	kgsl_phys_memory_init();
 }
 

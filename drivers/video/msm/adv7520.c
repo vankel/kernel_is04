@@ -1,72 +1,18 @@
 /* Copyright (c) 2010, Code Aurora Forum. All rights reserved.
  *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions
- * are met:
- *
- *     * Redistributions of source code must retain the above copyright
- *       notice, this list of conditions and the following disclaimer.
- *     * Redistributions in binary form must reproduce the above
- *       copyright notice, this list of conditions and the following
- *       disclaimer in the documentation and/or other materials provided
- *       with the distribution.
- *     * Neither the name of Code Aurora Forum, Inc. nor the names of its
- *       contributors may be used to endorse or promote products derived
- *       from this software without specific prior written permission.
- *
- * THIS SOFTWARE IS PROVIDED "AS IS" AND ANY EXPRESS OR IMPLIED
- * WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
- * MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
- * IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR
- * ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
- * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
- * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR
- * BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
- * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
- * OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
- * EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * Alternatively, and instead of the terms immediately above, this
- * software may be relicensed by the recipient at their option under the
- * terms of the GNU General Public License version 2 ("GPL") and only
- * version 2.  If the recipient chooses to relicense the software under
- * the GPL, then the recipient shall replace all of the text immediately
- * above and including this paragraph with the text immediately below
- * and between the words START OF ALTERNATE GPL TERMS and END OF
- * ALTERNATE GPL TERMS and such notices and license terms shall apply
- * INSTEAD OF the notices and licensing terms given above.
- *
- * START OF ALTERNATE GPL TERMS
- *
- * Copyright (c) 2010, Code Aurora Forum. All rights reserved.
- *
- * This software was originally licensed under the Code Aurora Forum
- * Inc. Dual BSD/GPL License version 1.1 and relicensed as permitted
- * under the terms thereof by a recipient under the General Public
- * License Version 2.
- *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
  * only version 2 as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
  * 02110-1301, USA.
- *
- * THIS SOFTWARE IS PROVIDED "AS IS" AND ANY EXPRESS OR IMPLIED
- * WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
- * MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
- * IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR
- * ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
- * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
- * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR
- * BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
- * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
- * OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
- * EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * END OF ALTERNATE GPL TERMS
  */
 
 #include <linux/i2c.h>
@@ -75,6 +21,7 @@
 #include <linux/adv7520.h>
 #include "msm_fb.h"
 
+
 static struct i2c_client *hclient;
 static struct i2c_client *eclient;
 
@@ -82,8 +29,6 @@ struct msm_panel_info *pinfo;
 static bool power_on = FALSE;	/* For power on/off */
 
 static u8 reg[256];	/* HDMI panel registers */
-static u8 ereg[256];  /*  EDID  memory        */
-
 static short  *hdtv_mux ;
 
 /*
@@ -225,17 +170,10 @@ static void adv7520_read_status(void)
 /* AV7520 chip specific initialization */
 static void adv7520_enable(void)
 {
-	struct hdmi_edid *p_edid  = (struct hdmi_edid *)ereg;
-	struct hdmi_edid_dtd_video *p_video_spec = NULL;
-	int i, horizontal_resolution, vertical_resolution ;
-
 	/* Initialize the variables used to read/write the ADV7520 chip. */
 	memset(&reg, 0xff, sizeof(reg));
 
-	adv7520_read_status();
-
 	/* Get the values from the "Fixed Registers That Must Be Set". */
-
 	reg[0x98] = adv7520_read_reg(hclient, 0x98);
 	reg[0x9c] = adv7520_read_reg(hclient, 0x9c);
 	reg[0x9d] = adv7520_read_reg(hclient, 0x9d);
@@ -250,43 +188,38 @@ static void adv7520_enable(void)
 	/* Get the "HDMI/DVI Selection" register. */
 	reg[0xaf] = adv7520_read_reg(hclient, 0xaf);
 
-	/* Get the i2s audio registers */
-	reg[0x01] = adv7520_read_reg(hclient, 0x01);
-	reg[0x02] = adv7520_read_reg(hclient, 0x02);
-	reg[0x03] = adv7520_read_reg(hclient, 0x03);
-	reg[0x0a] = adv7520_read_reg(hclient, 0x0a);
-	reg[0x0b] = adv7520_read_reg(hclient, 0x0b);
-	reg[0x0c] = adv7520_read_reg(hclient, 0x0c);
-
 	/* Hard coded values provided by ADV7520 data sheet. */
 	reg[0x98] = 0x03;
 	reg[0x9c] = 0x38;
-	reg[0x9d] = (reg[0x9d] & 0xfc) | 0x01;
-	reg[0xa2] = (reg[0xa2] & 0x03) | 0x94;
-	reg[0xa3] = (reg[0xa3] & 0x03) | 0x94;
+	reg[0x9d] = 0x61 ;
+	reg[0xa2] = 0x94;
+	reg[0xa3] = 0x94;
 	reg[0xde] = 0x88;
 
 	/* Set the HDMI select bit. */
-	reg[0xaf] |= 0x02;
+	reg[0xaf] |= 0x16;
 
-	/* Convert the 20-bit 'N' value to write to the ADV chip. */
-	reg[0x01] = (u8) ((ADV7520_AUDIO_CTS_20BIT_N >> 16) & 0x0f);
-	reg[0x02] = (u8) ((ADV7520_AUDIO_CTS_20BIT_N >> 8) & 0xff);
-	reg[0x03] = (u8) (ADV7520_AUDIO_CTS_20BIT_N & 0xff);
+	/* Set the audio related registers. */
+	reg[0x01] = 0x00;
+	reg[0x02] = 0x2d;
+	reg[0x03] = 0x80;
+	reg[0x0a] = 0x4d ;
+	reg[0x0b] = 0x0e ;
+	reg[0x0c] =  0x84 ;
+	reg[0x0d] =  0x10 ;
+	reg[0x12] =  0x00 ;
+	reg[0x14] =  0x00 ;
+	reg[0x15] =  0x20 ;
+	reg[0x44] =  0x79 ;
+	reg[0x73] =  0x1 ;
+	reg[0x76] =  0x00 ;
 
-	/* 0x0A[4] = 0 (I2S)            */
-	/* 0x0A[2] = 0 (MCLK inactive)  */
-	/* 0x0A[1:0] = 01 (x256 fs)     */
-	reg[0x0a] = (reg[0x0a] & 0xe8) | 0x01;
-
-	/* 0x0B[6] = 0 (MCLK polarity rising edge) */
-	reg[0x0b] = (reg[0x0b] & 0xbf);
-
-	/* 0x0C[7] = 0 (use sampling frequency from I2S stream) */
-	/* 0x0C[6] = 0 (use channel status bits from I2S stream) */
-	/* 0x0C[5:2] = 0001 (I2S0) */
-	/* 0x0C[1:0] = 00 (standard I2S mode) */
-	reg[0x0c] = 0x04;
+	/* Set 720p display related registers */
+	reg[0x16] = 0x00;
+	reg[0x18] = 0x46;
+	reg[0x55] = 0x00;
+	reg[0xba] = 0x60;
+	reg[0x3c] = 0x04;
 
 	/* Set the values from the "Fixed Registers That Must Be Set". */
 	adv7520_write_reg(hclient, 0x98, reg[0x98]);
@@ -299,7 +232,7 @@ static void adv7520_enable(void)
 	/* Set the "HDMI/DVI Selection" register. */
 	adv7520_write_reg(hclient, 0xaf, reg[0xaf]);
 
-	/* set EDID Monitor address */
+	/* Set EDID Monitor address */
 	reg[0x43] = ADV7520_EDIDI2CSLAVEADDRESS ;
 	adv7520_write_reg(hclient, 0x43, reg[0x43]);
 
@@ -310,63 +243,21 @@ static void adv7520_enable(void)
 	adv7520_write_reg(hclient, 0x0a, reg[0x0a]);
 	adv7520_write_reg(hclient, 0x0b, reg[0x0b]);
 	adv7520_write_reg(hclient, 0x0c, reg[0x0c]);
-
-       /* Settings for 720p */
-
-	reg[0x15] = 0x00;
-	reg[0x16] = 0x00;
-	reg[0x18] = 0x46;
-	reg[0x55] = 0x00;
-	reg[0xba] = 0x60;
-	reg[0x3c] = 0x04;
-
+	adv7520_write_reg(hclient, 0x0d, reg[0x0d]);
+	adv7520_write_reg(hclient, 0x12, reg[0x12]);
+	adv7520_write_reg(hclient, 0x14, reg[0x14]);
 	adv7520_write_reg(hclient, 0x15, reg[0x15]);
+	adv7520_write_reg(hclient, 0x44, reg[0x44]);
+	adv7520_write_reg(hclient, 0x73, reg[0x73]);
+	adv7520_write_reg(hclient, 0x76, reg[0x76]);
+
+       /* Enable  720p display */
 	adv7520_write_reg(hclient, 0x16, reg[0x16]);
 	adv7520_write_reg(hclient, 0x18, reg[0x18]);
 	adv7520_write_reg(hclient, 0x55, reg[0x55]);
 	adv7520_write_reg(hclient, 0xba, reg[0xba]);
 	adv7520_write_reg(hclient, 0x3c, reg[0x3c]);
 
-
-	/* Read EDID memory */
-	for (i = 0; i <= 0xff; i++)
-		ereg[i] = adv7520_read_reg(eclient, i);
-
-	 /* Parse EDID Data */
-	for (i = 0; i < HDMI_EDID_MAX_DTDS; i++) {
-		if (p_edid->dtd[i].pixel_clock[0] != 0 &&
-			p_edid->dtd[i].pixel_clock[1] != 0)
-			p_video_spec = &p_edid->dtd[i];
-	}
-
-	/* Native Monitor Resoultion */
-	horizontal_resolution = (p_video_spec->horiz_high & 0xF0) * 256
-				+ p_video_spec->horiz_active   ;
-	vertical_resolution   = (p_video_spec->vert_high  & 0xF0) * 256
-				+ p_video_spec->vert_active    ;
-
-	if (horizontal_resolution == 720 && vertical_resolution == 480) {
-		/*  Fill the pinfo Data structure */
-		pinfo->xres = 720;
-		pinfo->yres = 480;
-		pinfo->type = LCDC_PANEL;
-		pinfo->pdest = DISPLAY_1;
-		pinfo->wait_cycle = 0;
-		pinfo->bpp = 24;
-		pinfo->fb_num = 2;
-		pinfo->clk_rate = 27027000;
-		pinfo->lcdc.h_back_porch = 60;
-		pinfo->lcdc.h_front_porch = 16;
-		pinfo->lcdc.h_pulse_width = 62;
-		pinfo->lcdc.v_back_porch = 30;
-		pinfo->lcdc.v_front_porch = 9;
-		pinfo->lcdc.v_pulse_width = 6;
-		pinfo->lcdc.border_clr = 0;	/* black */
-		pinfo->lcdc.underflow_clr = 0xff;	/* blue */
-		pinfo->lcdc.hsync_skew = 0;
-	}
-
-	adv7520_read_status();
 }
 
 static const struct i2c_device_id adv7520_id[] = {
@@ -390,17 +281,11 @@ static struct platform_device hdmi_device = {
 static int __devinit
 adv7520_probe(struct i2c_client *client, const struct i2c_device_id *id)
 {
-	struct i2c_adapter *edid_adap = i2c_get_adapter(0);  /* Secondary I2C */
 	if (!i2c_check_functionality(client->adapter, I2C_FUNC_I2C))
 		return -ENODEV;
 
 	/* Init real i2c_client */
 	hclient = client;
-	/* Init EDID client	*/
-	eclient = i2c_new_dummy(edid_adap, ADV7520_EDIDI2CSLAVEADDRESS >> 1);
-	if (!eclient)
-		printk(KERN_ERR "Address %02x unavailable \n",
-					ADV7520_EDIDI2CSLAVEADDRESS >> 1);
 	adv7520_enable();
 	msm_fb_add_device(&hdmi_device);
 	return 0;
@@ -438,7 +323,7 @@ static int __init adv7520_init(void)
 	pinfo->pdest = DISPLAY_2;
 	pinfo->wait_cycle = 0;
 	pinfo->bpp = 24;
-	pinfo->fb_num = 2;
+	pinfo->fb_num = 1;
 	pinfo->clk_rate = 74250000;
 	pinfo->lcdc.h_back_porch = 220;
 	pinfo->lcdc.h_front_porch = 110;
@@ -474,7 +359,7 @@ static void __exit adv7520_exit(void)
 
 module_init(adv7520_init);
 module_exit(adv7520_exit);
-MODULE_LICENSE("Dual BSD/GPL");
+MODULE_LICENSE("GPL v2");
 MODULE_VERSION("0.1");
 MODULE_AUTHOR("Qualcomm Innovation Center, Inc.");
 MODULE_DESCRIPTION("ADV7520 HDMI driver");

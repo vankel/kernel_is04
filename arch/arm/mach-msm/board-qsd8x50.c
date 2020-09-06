@@ -1,57 +1,18 @@
 /* Copyright (c) 2008-2010, Code Aurora Forum. All rights reserved.
  *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are met:
- *     * Redistributions of source code must retain the above copyright
- *       notice, this list of conditions and the following disclaimer.
- *     * Redistributions in binary form must reproduce the above copyright
- *       notice, this list of conditions and the following disclaimer in the
- *       documentation and/or other materials provided with the distribution.
- *     * Neither the name of Code Aurora Forum nor
- *       the names of its contributors may be used to endorse or promote
- *       products derived from this software without specific prior written
- *       permission.
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 and
+ * only version 2 as published by the Free Software Foundation.
  *
- * Alternatively, provided that this notice is retained in full, this software
- * may be relicensed by the recipient under the terms of the GNU General Public
- * License version 2 ("GPL") and only version 2, in which case the provisions of
- * the GPL apply INSTEAD OF those given above.  If the recipient relicenses the
- * software under the GPL, then the identification text in the MODULE_LICENSE
- * macro must be changed to reflect "GPLv2" instead of "Dual BSD/GPL".  Once a
- * recipient changes the license terms to the GPL, subsequent recipients shall
- * not relicense under alternate licensing terms, including the BSD or dual
- * BSD/GPL terms.  In addition, the following license statement immediately
- * below and between the words START and END shall also then apply when this
- * software is relicensed under the GPL:
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * START
- *
- * This program is free software; you can redistribute it and/or modify it under
- * the terms of the GNU General Public License version 2 and only version 2 as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful, but WITHOUT
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
- * FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more
- * details.
- *
- * You should have received a copy of the GNU General Public License along with
- * this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
- *
- * END
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
- * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE
- * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
- * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
- * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
- * POSSIBILITY OF SUCH DAMAGE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+ * 02110-1301, USA.
  *
  */
 
@@ -61,7 +22,6 @@
 #include <linux/platform_device.h>
 #include <linux/android_pmem.h>
 #include <linux/bootmem.h>
-#include <linux/usb/mass_storage_function.h>
 #include <linux/i2c.h>
 #include <linux/spi/spi.h>
 #include <linux/delay.h>
@@ -93,9 +53,9 @@
 #include <mach/camera.h>
 #include <mach/memory.h>
 #include <mach/msm_spi.h>
-#include <mach/s1r72v05.h>
 #include <mach/msm_tsif.h>
 #include <mach/msm_battery.h>
+#include <mach/rpc_server_handset.h>
 
 #include "devices.h"
 #include "timer.h"
@@ -112,12 +72,12 @@
 #define TOUCHPAD_SUSPEND 	34
 #define TOUCHPAD_IRQ 		38
 
-#define MSM_PMEM_MDP_SIZE	0x1C91000
+#define MSM_PMEM_SF_SIZE	0x1700000
 
 #define SMEM_SPINLOCK_I2C	"S:6"
 
-#define MSM_PMEM_ADSP_SIZE	0x2196000
-#define MSM_FB_SIZE         0x177000
+#define MSM_PMEM_ADSP_SIZE	0x2B96000
+#define MSM_FB_SIZE         0x2EE000
 #define MSM_AUDIO_SIZE		0x80000
 #define MSM_GPU_PHYS_SIZE 	SZ_2M
 
@@ -251,6 +211,19 @@ static struct usb_composition usb_func_composition[] = {
 	},
 #endif
 };
+static struct usb_mass_storage_platform_data mass_storage_pdata = {
+	.nluns		= 1,
+	.vendor		= "GOOGLE",
+	.product	= "Mass Storage",
+	.release	= 0xFFFF,
+};
+static struct platform_device mass_storage_device = {
+	.name           = "usb_mass_storage",
+	.id             = -1,
+	.dev            = {
+		.platform_data          = &mass_storage_pdata,
+	},
+};
 static struct android_usb_platform_data android_usb_pdata = {
 	.vendor_id	= 0x05C6,
 	.version	= 0x0100,
@@ -258,7 +231,6 @@ static struct android_usb_platform_data android_usb_pdata = {
 	.num_compositions = ARRAY_SIZE(usb_func_composition),
 	.product_name	= "Qualcomm HSUSB Device",
 	.manufacturer_name = "Qualcomm Incorporated",
-	.nluns = 1,
 };
 static struct platform_device android_usb_device = {
 	.name	= "android_usb",
@@ -274,86 +246,6 @@ static struct platform_device smc91x_device = {
 	.id             = 0,
 	.num_resources  = ARRAY_SIZE(smc91x_resources),
 	.resource       = smc91x_resources,
-};
-
-#define S1R72V05_CS_GPIO 152
-#define S1R72V05_IRQ_GPIO 148
-
-static int qsd8x50_init_s1r72v05(void)
-{
-	int rc;
-	u8 cs_gpio = S1R72V05_CS_GPIO;
-	u8 irq_gpio = S1R72V05_IRQ_GPIO;
-
-	rc = gpio_request(cs_gpio, "ide_s1r72v05_cs");
-	if (rc) {
-		pr_err("Failed to request GPIO pin %d (rc=%d)\n",
-		       cs_gpio, rc);
-		goto err;
-	}
-
-	rc = gpio_request(irq_gpio, "ide_s1r72v05_irq");
-	if (rc) {
-		pr_err("Failed to request GPIO pin %d (rc=%d)\n",
-		       irq_gpio, rc);
-		goto err;
-	}
-	if (gpio_tlmm_config(GPIO_CFG(cs_gpio,
-				      2, GPIO_OUTPUT, GPIO_NO_PULL,
-				      GPIO_2MA),
-			     GPIO_ENABLE)) {
-		printk(KERN_ALERT
-		       "s1r72v05: Could not configure CS gpio\n");
-		goto err;
-	}
-
-	if (gpio_tlmm_config(GPIO_CFG(irq_gpio,
-				      0, GPIO_INPUT, GPIO_NO_PULL,
-				      GPIO_2MA),
-			     GPIO_ENABLE)) {
-		printk(KERN_ALERT
-		       "s1r72v05: Could not configure IRQ gpio\n");
-		goto err;
-	}
-
-	if (gpio_configure(irq_gpio, IRQF_TRIGGER_FALLING)) {
-		printk(KERN_ALERT
-		       "s1r72v05: Could not set IRQ polarity\n");
-		goto err;
-	}
-	return 0;
-
-err:
-	gpio_free(cs_gpio);
-	gpio_free(irq_gpio);
-	return -ENODEV;
-}
-
-static struct resource s1r72v05_resources[] = {
-	[0] = {
-		.start = 0x88000000,
-		.end = 0x88000000 + 0xFF,
-		.flags = IORESOURCE_MEM,
-	},
-	[1] = {
-		.start = MSM_GPIO_TO_INT(S1R72V05_IRQ_GPIO),
-		.end = S1R72V05_IRQ_GPIO,
-		.flags = IORESOURCE_IRQ,
-	},
-};
-
-static struct s1r72v05_platform_data s1r72v05_data = {
-	.gpio_setup = qsd8x50_init_s1r72v05,
-};
-
-static struct platform_device s1r72v05_device = {
-	.name           = "s1r72v05",
-	.id             = 0,
-	.num_resources  = ARRAY_SIZE(s1r72v05_resources),
-	.resource       = s1r72v05_resources,
-	.dev            = {
-		.platform_data          = &s1r72v05_data,
-	},
 };
 
 #ifdef CONFIG_USB_FUNCTION
@@ -420,11 +312,16 @@ static struct usb_composition usb_func_composition[] = {
 };
 #endif
 
+static struct msm_handset_platform_data hs_platform_data = {
+	.hs_name = "8k_handset",
+	.pwr_key_delay_ms = 500, /* 0 will disable end key */
+};
+
 static struct platform_device hs_device = {
 	.name   = "msm-handset",
 	.id     = -1,
 	.dev    = {
-		.platform_data = "8k_handset",
+		.platform_data = &hs_platform_data,
 	},
 };
 
@@ -451,178 +348,6 @@ static void msm_fsusb_setup_gpio(unsigned int enable)
 #endif
 
 #define MSM_USB_BASE              ((unsigned)addr)
-static unsigned ulpi_read(void __iomem *addr, unsigned reg)
-{
-	unsigned timeout = 100000;
-
-	/* initiate read operation */
-	writel(ULPI_RUN | ULPI_READ | ULPI_ADDR(reg),
-	       USB_ULPI_VIEWPORT);
-
-	/* wait for completion */
-	while ((readl(USB_ULPI_VIEWPORT) & ULPI_RUN) && (--timeout))
-		cpu_relax();
-
-	if (timeout == 0) {
-		printk(KERN_ERR "ulpi_read: timeout %08x\n",
-			readl(USB_ULPI_VIEWPORT));
-		return 0xffffffff;
-	}
-	return ULPI_DATA_READ(readl(USB_ULPI_VIEWPORT));
-}
-
-static int ulpi_write(void __iomem *addr, unsigned val, unsigned reg)
-{
-	unsigned timeout = 10000;
-
-	/* initiate write operation */
-	writel(ULPI_RUN | ULPI_WRITE |
-	       ULPI_ADDR(reg) | ULPI_DATA(val),
-	       USB_ULPI_VIEWPORT);
-
-	/* wait for completion */
-	while ((readl(USB_ULPI_VIEWPORT) & ULPI_RUN) && (--timeout))
-		cpu_relax();
-
-	if (timeout == 0) {
-		printk(KERN_ERR "ulpi_write: timeout\n");
-		return -1;
-	}
-
-	return 0;
-}
-
-struct clk *hs_clk, *phy_clk;
-#define CLKRGM_APPS_RESET_USBH      37
-#define CLKRGM_APPS_RESET_USB_PHY   34
-static void msm_hsusb_apps_reset_link(int reset)
-{
-	if (reset)
-		clk_reset(hs_clk, CLK_RESET_ASSERT);
-	else
-		clk_reset(hs_clk, CLK_RESET_DEASSERT);
-}
-
-static void msm_hsusb_apps_reset_phy(void)
-{
-	clk_reset(phy_clk, CLK_RESET_ASSERT);
-	msleep(1);
-	clk_reset(phy_clk, CLK_RESET_DEASSERT);
-}
-
-#define ULPI_VERIFY_MAX_LOOP_COUNT  3
-static int msm_hsusb_phy_verify_access(void __iomem *addr)
-{
-	int temp;
-
-	for (temp = 0; temp < ULPI_VERIFY_MAX_LOOP_COUNT; temp++) {
-		if (ulpi_read(addr, ULPI_DEBUG) != (unsigned)-1)
-			break;
-		msm_hsusb_apps_reset_phy();
-	}
-
-	if (temp == ULPI_VERIFY_MAX_LOOP_COUNT) {
-		pr_err("%s: ulpi read failed for %d times\n",
-				__func__, ULPI_VERIFY_MAX_LOOP_COUNT);
-		return -1;
-	}
-
-	return 0;
-}
-
-static unsigned msm_hsusb_ulpi_read_with_reset(void __iomem *addr, unsigned reg)
-{
-	int temp;
-	unsigned res;
-
-	for (temp = 0; temp < ULPI_VERIFY_MAX_LOOP_COUNT; temp++) {
-		res = ulpi_read(addr, reg);
-		if (res != -1)
-			return res;
-		msm_hsusb_apps_reset_phy();
-	}
-
-	pr_err("%s: ulpi read failed for %d times\n",
-			__func__, ULPI_VERIFY_MAX_LOOP_COUNT);
-
-	return -1;
-}
-
-static int msm_hsusb_ulpi_write_with_reset(void __iomem *addr,
-		unsigned val, unsigned reg)
-{
-	int temp;
-	int res;
-
-	for (temp = 0; temp < ULPI_VERIFY_MAX_LOOP_COUNT; temp++) {
-		res = ulpi_write(addr, val, reg);
-		if (!res)
-			return 0;
-		msm_hsusb_apps_reset_phy();
-	}
-
-	pr_err("%s: ulpi write failed for %d times\n",
-			__func__, ULPI_VERIFY_MAX_LOOP_COUNT);
-	return -1;
-}
-
-static int msm_hsusb_phy_caliberate(void __iomem *addr)
-{
-	int ret;
-	unsigned res;
-
-	ret = msm_hsusb_phy_verify_access(addr);
-	if (ret)
-		return -ETIMEDOUT;
-
-	res = msm_hsusb_ulpi_read_with_reset(addr, ULPI_FUNC_CTRL_CLR);
-	if (res == -1)
-		return -ETIMEDOUT;
-
-	res = msm_hsusb_ulpi_write_with_reset(addr,
-			res | ULPI_SUSPENDM,
-			ULPI_FUNC_CTRL_CLR);
-	if (res)
-		return -ETIMEDOUT;
-
-	msm_hsusb_apps_reset_phy();
-
-	return msm_hsusb_phy_verify_access(addr);
-}
-
-#define USB_LINK_RESET_TIMEOUT      (msecs_to_jiffies(10))
-static int msm_hsusb_native_phy_reset(void __iomem *addr)
-{
-	u32 temp;
-	unsigned long timeout;
-
-	if (machine_is_qsd8x50_ffa() || machine_is_qsd8x50a_ffa())
-		return msm_hsusb_phy_reset();
-
-	msm_hsusb_apps_reset_link(1);
-	msm_hsusb_apps_reset_phy();
-	msm_hsusb_apps_reset_link(0);
-
-	/* select ULPI phy */
-	temp = (readl(USB_PORTSC) & ~PORTSC_PTS);
-	writel(temp | PORTSC_PTS_ULPI, USB_PORTSC);
-
-	if (msm_hsusb_phy_caliberate(addr))
-		return -1;
-
-	/* soft reset phy */
-	writel(USBCMD_RESET, USB_USBCMD);
-	timeout = jiffies + USB_LINK_RESET_TIMEOUT;
-	while (readl(USB_USBCMD) & USBCMD_RESET) {
-		if (time_after(jiffies, timeout)) {
-			pr_err("usb link reset timeout\n");
-			break;
-		}
-		msleep(1);
-	}
-
-	return 0;
-}
 
 static struct msm_hsusb_platform_data msm_hsusb_pdata = {
 #ifdef CONFIG_USB_FUNCTION
@@ -638,7 +363,6 @@ static struct msm_hsusb_platform_data msm_hsusb_pdata = {
 	.num_functions	= ARRAY_SIZE(usb_functions_map),
 	.config_gpio    = NULL,
 
-	.phy_reset = msm_hsusb_native_phy_reset,
 #endif
 };
 
@@ -668,7 +392,6 @@ static void msm_hsusb_vbus_power(unsigned phy_info, int on)
 
 static struct msm_usb_host_platform_data msm_usb_host_pdata = {
 	.phy_info	= (USB_PHY_INTEGRATED | USB_PHY_MODEL_180NM),
-	.phy_reset = msm_hsusb_native_phy_reset,
 	.vbus_power = msm_hsusb_vbus_power,
 };
 
@@ -708,7 +431,7 @@ static struct android_pmem_platform_data android_pmem_kernel_smi_pdata = {
 
 static struct android_pmem_platform_data android_pmem_pdata = {
 	.name = "pmem",
-	.allocator_type = PMEM_ALLOCATORTYPE_BITMAP,
+	.allocator_type = PMEM_ALLOCATORTYPE_ALLORNOTHING,
 	.cached = 1,
 };
 
@@ -948,6 +671,7 @@ static void msm_qsd_spi_gpio_release(void)
 
 static struct msm_spi_platform_data qsd_spi_pdata = {
 	.max_clock_speed = 19200000,
+	.clk_name = "spi_clk",
 	.gpio_config  = msm_qsd_spi_gpio_config,
 	.gpio_release = msm_qsd_spi_gpio_release,
 	.dma_config = msm_qsd_spi_dma_config,
@@ -1006,14 +730,14 @@ static void msm_fb_vreg_config(const char *name, int on)
 #define MDDI_RST_OUT_GPIO 100
 
 static int mddi_power_save_on;
-static void msm_fb_mddi_power_save(int on)
+static int msm_fb_mddi_power_save(int on)
 {
 	int flag_on = !!on;
-	int ret;
+	int ret = 0;
 
 
 	if (mddi_power_save_on == flag_on)
-		return;
+		return ret;
 
 	mddi_power_save_on = flag_on;
 
@@ -1039,6 +763,8 @@ static void msm_fb_mddi_power_save(int on)
 		gpio_set_value(MDDI_RST_OUT_GPIO, 1);
 		mdelay(1);
 	}
+
+	return ret;
 }
 
 static int msm_fb_mddi_sel_clk(u32 *clk_rate)
@@ -1468,6 +1194,9 @@ static struct kgsl_platform_data kgsl_pdata = {
 	.max_grp3d_freq = 0,
 	.min_grp3d_freq = 0,
 	.set_grp3d_async = NULL,
+	.imem_clk_name = "imem_clk",
+	.grp3d_clk_name = "grp_clk",
+	.grp2d_clk_name = NULL,
 };
 
 static struct platform_device msm_device_kgsl = {
@@ -1498,15 +1227,13 @@ static const struct msm_gpio tsif_gpios[] = {
 	{ .gpio_cfg = TSIF_A_EN,   .label =  "tsif_en", },
 	{ .gpio_cfg = TSIF_A_DATA, .label =  "tsif_data", },
 	{ .gpio_cfg = TSIF_A_SYNC, .label =  "tsif_sync", },
-#if 0
-	{ .gpio_cfg = 0, .label =  "tsif_error", },
-	{ .gpio_cfg = 0, .label =  "tsif_null", },
-#endif
 };
 
 static struct msm_tsif_platform_data tsif_platform_data = {
 	.num_gpios = ARRAY_SIZE(tsif_gpios),
 	.gpios = tsif_gpios,
+	.tsif_clk = "tsif_clk",
+	.tsif_ref_clk = "tsif_ref_clk",
 };
 
 #endif /* defined(CONFIG_TSIF) || defined(CONFIG_TSIF_MODULE) */
@@ -2065,21 +1792,35 @@ static int hsusb_rpc_connect(int connect)
 
 static struct msm_otg_platform_data msm_otg_pdata = {
 	.rpc_connect	= hsusb_rpc_connect,
-	.phy_reset	= msm_hsusb_native_phy_reset,
 	.pmic_notif_init         = msm_pm_app_rpc_init,
 	.pmic_notif_deinit       = msm_pm_app_rpc_deinit,
 	.pmic_register_vbus_sn   = msm_pm_app_register_vbus_sn,
 	.pmic_unregister_vbus_sn = msm_pm_app_unregister_vbus_sn,
 	.pmic_enable_ldo         = msm_pm_app_enable_usb_ldo,
+	.pemp_level              = PRE_EMPHASIS_WITH_10_PERCENT,
+	.cdr_autoreset           = CDR_AUTO_RESET_DEFAULT,
+	.drv_ampl                = HS_DRV_AMPLITUDE_5_PERCENT,
 };
 
 static struct msm_hsusb_gadget_platform_data msm_gadget_pdata;
+
+static struct platform_device *early_devices[] __initdata = {
+#ifdef CONFIG_GPIOLIB
+	&msm_gpio_devices[0],
+	&msm_gpio_devices[1],
+	&msm_gpio_devices[2],
+	&msm_gpio_devices[3],
+	&msm_gpio_devices[4],
+	&msm_gpio_devices[5],
+	&msm_gpio_devices[6],
+	&msm_gpio_devices[7],
+#endif
+};
 
 static struct platform_device *devices[] __initdata = {
 	&msm_fb_device,
 	&mddi_toshiba_device,
 	&smc91x_device,
-	&s1r72v05_device,
 	&msm_device_smd,
 	&msm_device_dmov,
 	&android_pmem_kernel_ebi1_device,
@@ -2096,6 +1837,7 @@ static struct platform_device *devices[] __initdata = {
 	&mass_storage_device,
 #endif
 #ifdef CONFIG_USB_ANDROID
+	&mass_storage_device,
 	&android_usb_device,
 #endif
 	&msm_device_tssc,
@@ -2144,19 +1886,24 @@ static void kgsl_phys_memory_init(void)
 		resource_size(&kgsl_resources[1]), "kgsl");
 }
 
+static void usb_mpp_init(void)
+{
+	unsigned rc;
+	unsigned mpp_usb = 20;
+
+	if (machine_is_qsd8x50_ffa()) {
+		rc = mpp_config_digital_out(mpp_usb,
+			MPP_CFG(MPP_DLOGIC_LVL_VDD,
+				MPP_DLOGIC_OUT_CTRL_HIGH));
+		if (rc)
+			pr_err("%s: configuring mpp pin"
+				"to enable 3.3V LDO failed\n", __func__);
+	}
+}
+
 static void __init qsd8x50_init_usb(void)
 {
-	hs_clk = clk_get(NULL, "usb_hs_clk");
-	if (IS_ERR(hs_clk)) {
-		printk(KERN_ERR "%s: hs_clk clk get failed\n", __func__);
-		return;
-	}
-
-	phy_clk = clk_get(NULL, "usb_phy_clk");
-	if (IS_ERR(phy_clk)) {
-		printk(KERN_ERR "%s: phy_clk clk get failed\n", __func__);
-		return;
-	}
+	usb_mpp_init();
 
 #ifdef CONFIG_USB_MSM_OTG_72K
 	platform_device_register(&msm_device_otg);
@@ -2323,6 +2070,9 @@ static uint32_t msm_sdcc_setup_power(struct device *dv, unsigned int vdd)
 }
 
 #endif
+#if (defined(CONFIG_MMC_MSM_SDC1_SUPPORT)\
+	|| defined(CONFIG_MMC_MSM_SDC2_SUPPORT)\
+	|| defined(CONFIG_MMC_MSM_SDC4_SUPPORT))
 
 static int msm_sdcc_get_wpswitch(struct device *dv)
 {
@@ -2348,6 +2098,7 @@ static int msm_sdcc_get_wpswitch(struct device *dv)
 	return ((ret == 0x02) ? 1 : 0);
 
 }
+#endif
 
 #ifdef CONFIG_MMC_MSM_SDC1_SUPPORT
 static struct mmc_platform_data qsd8x50_sdc1_data = {
@@ -2358,6 +2109,10 @@ static struct mmc_platform_data qsd8x50_sdc1_data = {
 #ifdef CONFIG_MMC_MSM_SDC1_DUMMY52_REQUIRED
 	.dummy52_required = 1,
 #endif
+	.msmsdcc_fmin	= 144000,
+	.msmsdcc_fmid	= 25000000,
+	.msmsdcc_fmax	= 49152000,
+	.nonremovable	= 0,
 };
 #endif
 
@@ -2370,6 +2125,10 @@ static struct mmc_platform_data qsd8x50_sdc2_data = {
 #ifdef CONFIG_MMC_MSM_SDC2_DUMMY52_REQUIRED
 	.dummy52_required = 1,
 #endif
+	.msmsdcc_fmin	= 144000,
+	.msmsdcc_fmid	= 25000000,
+	.msmsdcc_fmax	= 49152000,
+	.nonremovable	= 1,
 };
 #endif
 
@@ -2385,6 +2144,10 @@ static struct mmc_platform_data qsd8x50_sdc3_data = {
 #ifdef CONFIG_MMC_MSM_SDC3_DUMMY52_REQUIRED
 	.dummy52_required = 1,
 #endif
+	.msmsdcc_fmin	= 144000,
+	.msmsdcc_fmid	= 25000000,
+	.msmsdcc_fmax	= 49152000,
+	.nonremovable	= 0,
 };
 #endif
 
@@ -2397,6 +2160,10 @@ static struct mmc_platform_data qsd8x50_sdc4_data = {
 #ifdef CONFIG_MMC_MSM_SDC4_DUMMY52_REQUIRED
 	.dummy52_required = 1,
 #endif
+	.msmsdcc_fmin	= 144000,
+	.msmsdcc_fmid	= 25000000,
+	.msmsdcc_fmax	= 49152000,
+	.nonremovable	= 0,
 };
 #endif
 
@@ -2560,12 +2327,12 @@ static void __init pmem_kernel_smi_size_setup(char **p)
 __early_param("pmem_kernel_smi_size=", pmem_kernel_smi_size_setup);
 #endif
 
-static unsigned pmem_mdp_size = MSM_PMEM_MDP_SIZE;
-static void __init pmem_mdp_size_setup(char **p)
+static unsigned pmem_sf_size = MSM_PMEM_SF_SIZE;
+static void __init pmem_sf_size_setup(char **p)
 {
-	pmem_mdp_size = memparse(*p, p);
+	pmem_sf_size = memparse(*p, p);
 }
-__early_param("pmem_mdp_size=", pmem_mdp_size_setup);
+__early_param("pmem_sf_size=", pmem_sf_size_setup);
 
 static unsigned pmem_adsp_size = MSM_PMEM_ADSP_SIZE;
 static void __init pmem_adsp_size_setup(char **p)
@@ -2587,6 +2354,8 @@ static void __init qsd8x50_init(void)
 	if (socinfo_init() < 0)
 		printk(KERN_ERR "%s: socinfo_init() failed!\n",
 		       __func__);
+	msm_clock_init(msm_clocks_8x50, msm_num_clocks_8x50);
+	platform_add_devices(early_devices, ARRAY_SIZE(early_devices));
 	qsd8x50_cfg_smc91x();
 	msm_acpu_clock_init(&qsd8x50_clock_data);
 
@@ -2619,7 +2388,7 @@ static void __init qsd8x50_init(void)
 				ARRAY_SIZE(msm_i2c_board_info));
 	spi_register_board_info(msm_spi_board_info,
 				ARRAY_SIZE(msm_spi_board_info));
-	msm_pm_set_platform_data(msm_pm_data);
+	msm_pm_set_platform_data(msm_pm_data, ARRAY_SIZE(msm_pm_data));
 	kgsl_phys_memory_init();
 
 #ifdef CONFIG_SURF_FFA_GPIO_KEYPAD
@@ -2662,12 +2431,12 @@ static void __init qsd8x50_allocate_memory_regions(void)
 		__pa(MSM_PMEM_SMIPOOL_BASE));
 #endif
 
-	size = pmem_mdp_size;
+	size = pmem_sf_size;
 	if (size) {
 		addr = alloc_bootmem(size);
 		android_pmem_pdata.start = __pa(addr);
 		android_pmem_pdata.size = size;
-		pr_info("allocating %lu bytes at %p (%lx physical) for mdp "
+		pr_info("allocating %lu bytes at %p (%lx physical) for sf "
 			"pmem arena\n", size, addr, __pa(addr));
 	}
 
@@ -2701,7 +2470,6 @@ static void __init qsd8x50_map_io(void)
 	msm_shared_ram_phys = MSM_SHARED_RAM_PHYS;
 	msm_map_qsd8x50_io();
 	qsd8x50_allocate_memory_regions();
-	msm_clock_init(msm_clocks_8x50, msm_num_clocks_8x50);
 }
 
 MACHINE_START(QSD8X50_SURF, "QCT QSD8X50 SURF")

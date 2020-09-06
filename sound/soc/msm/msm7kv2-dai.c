@@ -76,7 +76,6 @@ EXPORT_SYMBOL_GPL(msm_dais);
 
 int msm_pcm_probe(struct platform_device *devptr)
 {
-	struct snd_card *card;
 	struct snd_soc_codec *codec;
 	int ret;
 
@@ -89,7 +88,7 @@ int msm_pcm_probe(struct platform_device *devptr)
 
 	codec->name = "MSM-CARD";
 	codec->owner = THIS_MODULE;
-	socdev->codec = codec;
+	socdev->card->codec = codec;
 	mutex_init(&codec->mutex);
 
 	INIT_LIST_HEAD(&codec->dapm_widgets);
@@ -101,8 +100,6 @@ int msm_pcm_probe(struct platform_device *devptr)
 		printk(KERN_ERR "msm_soc: failed to create pcms\n");
 		goto __nopcm;
 	}
-
-	card = socdev->codec->card;
 
 	ret = snd_soc_init_card(socdev);
 	if (ret < 0) {

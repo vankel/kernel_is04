@@ -14,7 +14,7 @@
 #ifndef __ASMARM_SETUP_H
 #define __ASMARM_SETUP_H
 
-#include <asm/types.h>
+#include <linux/types.h>
 
 #define COMMAND_LINE_SIZE 1024
 
@@ -37,10 +37,6 @@ struct tag_core {
 
 /* it is allowed to have multiple ATAG_MEM nodes */
 #define ATAG_MEM	0x54410002
-/* it is allowed to have multiple ATAG_MEM_RESERVED nodes */
-/* these indicate places where hotpluggable memory is present */
-/* which are not active during boot */
-#define ATAG_MEM_RESERVED	0x5441000A
 
 struct tag_mem32 {
 	__u32	size;
@@ -205,7 +201,8 @@ static struct tagtable __tagtable_##fn __tag = { tag, fn }
 struct membank {
 	unsigned long start;
 	unsigned long size;
-	int           node;
+	unsigned short node;
+	unsigned short highmem;
 };
 
 struct meminfo {

@@ -16,7 +16,6 @@
  *
  */
 
-#include <mach/debug_audio_mm.h>
 #include <linux/module.h>
 #include <linux/fs.h>
 #include <linux/miscdevice.h>
@@ -34,6 +33,7 @@
 #include <mach/qdsp5v2/qdsp5audrecmsg.h>
 #include <mach/qdsp5v2/audpreproc.h>
 #include <mach/qdsp5v2/audio_dev_ctl.h>
+#include <mach/debug_mm.h>
 
 /* FRAME_NUM must be a power of two */
 #define FRAME_NUM		(8)
@@ -84,6 +84,7 @@ struct audio_in {
 	uint32_t device_events;
 	uint32_t in_call;
 	uint32_t dev_cnt;
+	int voice_state;
 	spinlock_t dev_lock;
 
 	/* data allocated for various buffers */
@@ -167,6 +168,21 @@ static void amrnb_in_listener(u32 evt_id, union auddev_evt_data *evt_payload,
 
 		break;
 	}
+	case AUDDEV_EVT_VOICE_STATE_CHG: {
+		MM_DBG("AUDDEV_EVT_VOICE_STATE_CHG, state = %d\n",
+				evt_payload->voice_state);
+		audio->voice_state = evt_payload->voice_state;
+		if (audio->in_call && audio->running) {
+			if (audio->voice_state == VOICE_STATE_INCALL)
+				audamrnb_in_record_config(audio, 1);
+			else if (audio->voice_state == VOICE_STATE_OFFCALL) {
+				audamrnb_in_record_config(audio, 0);
+				wake_up(&audio->wait);
+			}
+		}
+
+		break;
+	}
 	default:
 		MM_ERR("wrong event %d\n", evt_id);
 		break;
@@ -232,7 +248,9 @@ static void audrec_dsp_event(void *data, unsigned id, size_t len,
 	case AUDREC_CMD_MEM_CFG_DONE_MSG: {
 		MM_DBG("CMD_MEM_CFG_DONE MSG DONE\n");
 		audio->running = 1;
-		if (audio->dev_cnt > 0)
+		if ((!audio->in_call && (audio->dev_cnt > 0)) ||
+			(audio->in_call &&
+				(audio->voice_state == VOICE_STATE_INCALL)))
 			audamrnb_in_record_config(audio, 1);
 		break;
 	}
@@ -461,6 +479,25 @@ static long audamrnb_in_ioctl(struct file *file,
 	mutex_lock(&audio->lock);
 	switch (cmd) {
 	case AUDIO_START: {
+		uint32_t freq;
+		freq = 48000;
+		MM_DBG("AUDIO_START\n");
+		if (audio->in_call && (audio->voice_state !=
+				VOICE_STATE_INCALL)) {
+			rc = -EPERM;
+			break;
+		}
+		rc = msm_snddev_request_freq(&freq, audio->enc_id,
+					SNDDEV_CAP_TX, AUDDEV_CLNT_ENC);
+		MM_DBG("sample rate configured %d\n", freq);
+		if (rc < 0) {
+			MM_DBG(" Sample rate can not be set, return code %d\n",
+								 rc);
+			msm_snddev_withdraw_freq(audio->enc_id,
+					SNDDEV_CAP_TX, AUDDEV_CLNT_ENC);
+			MM_DBG("msm_snddev_withdraw_freq\n");
+			break;
+		}
 		rc = audamrnb_in_enable(audio);
 		if (!rc) {
 			rc =
@@ -477,6 +514,9 @@ static long audamrnb_in_ioctl(struct file *file,
 	}
 	case AUDIO_STOP: {
 		rc = audamrnb_in_disable(audio);
+		rc = msm_snddev_withdraw_freq(audio->enc_id,
+					SNDDEV_CAP_TX, AUDDEV_CLNT_ENC);
+		MM_DBG("msm_snddev_withdraw_freq\n");
 		audio->stopped = 1;
 		break;
 	}
@@ -519,7 +559,7 @@ static long audamrnb_in_ioctl(struct file *file,
 	case AUDIO_GET_AMRNB_ENC_CONFIG_V2: {
 		struct msm_audio_amrnb_enc_config_v2 cfg;
 		memset(&cfg, 0, sizeof(cfg));
-		cfg.dtx_enable = ((audio->dtx_mode == -1) ? 0 : 1);
+		cfg.dtx_enable = ((audio->dtx_mode == -1) ? 1 : 0);
 		cfg.band_mode = audio->used_mode;
 		cfg.frame_format = audio->frame_format;
 		if (copy_to_user((void *) arg, &cfg, sizeof(cfg)))
@@ -537,7 +577,14 @@ static long audamrnb_in_ioctl(struct file *file,
 			rc = -EINVAL;
 			break;
 		}
-		audio->dtx_mode = ((cfg.dtx_enable == 0) ? -1 : 0);
+		if (cfg.dtx_enable == 0)
+			audio->dtx_mode = 0;
+		else if (cfg.dtx_enable == 1)
+			audio->dtx_mode = -1;
+		else {
+			rc = -EINVAL;
+			break;
+		}
 		audio->used_mode = cfg.band_mode;
 		break;
 	}
@@ -597,13 +644,22 @@ static ssize_t audamrnb_in_read(struct file *file,
 	mutex_lock(&audio->read_lock);
 	while (count > 0) {
 		rc = wait_event_interruptible(
-			audio->wait, (audio->in_count > 0) || audio->stopped);
+			audio->wait, (audio->in_count > 0) || audio->stopped
+			|| (audio->in_call && audio->running &&
+				(audio->voice_state == VOICE_STATE_OFFCALL)));
 		if (rc < 0)
 			break;
 
-		if (audio->stopped && !audio->in_count) {
-			rc = 0;/* End of File */
-			break;
+		if (!audio->in_count) {
+			if (audio->stopped)  {
+				rc = 0;/* End of File */
+				break;
+			} else if (audio->in_call && audio->running &&
+				(audio->voice_state == VOICE_STATE_OFFCALL)) {
+				MM_DBG("Not Permitted Voice Terminated\n");
+				rc = -EPERM; /* Voice Call stopped */
+				break;
+			}
 		}
 
 		index = audio->in_tail;
@@ -654,6 +710,10 @@ static int audamrnb_in_release(struct inode *inode, struct file *file)
 	MM_DBG("\n");
 	mutex_lock(&audio->lock);
 	audio->in_call = 0;
+	/* with draw frequency for session
+	   incase not stopped the driver */
+	msm_snddev_withdraw_freq(audio->enc_id, SNDDEV_CAP_TX,
+					AUDDEV_CLNT_ENC);
 	auddev_unregister_evt_listner(AUDDEV_CLNT_ENC, audio->enc_id);
 	audamrnb_in_disable(audio);
 	audamrnb_in_flush(audio);
@@ -708,8 +768,10 @@ static int audamrnb_in_open(struct inode *inode, struct file *file)
 
 	audamrnb_in_flush(audio);
 
-	audio->device_events = AUDDEV_EVT_DEV_RDY | AUDDEV_EVT_DEV_RLS;
+	audio->device_events = AUDDEV_EVT_DEV_RDY | AUDDEV_EVT_DEV_RLS |
+				AUDDEV_EVT_VOICE_STATE_CHG;
 
+	audio->voice_state = msm_get_voice_state();
 	rc = auddev_register_evt_listner(audio->device_events,
 					AUDDEV_CLNT_ENC, audio->enc_id,
 					amrnb_in_listener, (void *) audio);

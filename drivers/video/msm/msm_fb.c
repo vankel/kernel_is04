@@ -98,7 +98,6 @@ static int msm_fb_set_par(struct fb_info *info);
 static int msm_fb_blank_sub(int blank_mode, struct fb_info *info,
 			    boolean op_enable);
 static int msm_fb_suspend_sub(struct msm_fb_data_type *mfd);
-static int msm_fb_resume_sub(struct msm_fb_data_type *mfd);
 static int msm_fb_ioctl(struct fb_info *info, unsigned int cmd,
 			unsigned long arg);
 static int msm_fb_mmap(struct fb_info *info, struct vm_area_struct * vma);
@@ -329,12 +328,12 @@ static int msm_fb_suspend(struct platform_device *pdev, pm_message_t state)
 		return 0;
 
 	acquire_console_sem();
-	fb_set_suspend(mfd->fbi, 1);
+	fb_set_suspend(mfd->fbi, FBINFO_STATE_SUSPENDED);
 
 	ret = msm_fb_suspend_sub(mfd);
 	if (ret != 0) {
 		printk(KERN_ERR "msm_fb: failed to suspend! %d\n", ret);
-		fb_set_suspend(mfd->fbi, 0);
+		fb_set_suspend(mfd->fbi, FBINFO_STATE_RUNNING);
 	} else {
 		pdev->dev.power.power_state = state;
 	}
@@ -397,33 +396,7 @@ static int msm_fb_suspend_sub(struct msm_fb_data_type *mfd)
 	return 0;
 }
 
-#if defined(CONFIG_PM) && !defined(CONFIG_HAS_EARLYSUSPEND)
-static int msm_fb_resume(struct platform_device *pdev)
-{
-	/* This resume function is called when interrupt is enabled.
-	 */
-	int ret = 0;
-	struct msm_fb_data_type *mfd;
-
-	MSM_FB_DEBUG("msm_fb_resume\n");
-
-	mfd = (struct msm_fb_data_type *)platform_get_drvdata(pdev);
-
-	if ((!mfd) || (mfd->key != MFD_KEY))
-		return 0;
-
-	acquire_console_sem();
-	ret = msm_fb_resume_sub(mfd);
-	pdev->dev.power.power_state = PMSG_ON;
-	fb_set_suspend(mfd->fbi, 1);
-	release_console_sem();
-
-	return ret;
-}
-#else
-#define msm_fb_resume NULL
-#endif
-
+#ifdef CONFIG_PM
 static int msm_fb_resume_sub(struct msm_fb_data_type *mfd)
 {
 	int ret = 0;
@@ -449,14 +422,40 @@ static int msm_fb_resume_sub(struct msm_fb_data_type *mfd)
 
 	return ret;
 }
+#endif
+
+#if defined(CONFIG_PM) && !defined(CONFIG_HAS_EARLYSUSPEND)
+static int msm_fb_resume(struct platform_device *pdev)
+{
+	/* This resume function is called when interrupt is enabled.
+	 */
+	int ret = 0;
+	struct msm_fb_data_type *mfd;
+
+	MSM_FB_DEBUG("msm_fb_resume\n");
+
+	mfd = (struct msm_fb_data_type *)platform_get_drvdata(pdev);
+
+	if ((!mfd) || (mfd->key != MFD_KEY))
+		return 0;
+
+	acquire_console_sem();
+	ret = msm_fb_resume_sub(mfd);
+	pdev->dev.power.power_state = PMSG_ON;
+	fb_set_suspend(mfd->fbi, FBINFO_STATE_RUNNING);
+	release_console_sem();
+
+	return ret;
+}
+#else
+#define msm_fb_resume NULL
+#endif
 
 static struct platform_driver msm_fb_driver = {
 	.probe = msm_fb_probe,
 	.remove = msm_fb_remove,
 #ifndef CONFIG_HAS_EARLYSUSPEND
 	.suspend = msm_fb_suspend,
-	.suspend_late = NULL,
-	.resume_early = NULL,
 	.resume = msm_fb_resume,
 #endif
 	.shutdown = NULL,
@@ -1276,20 +1275,33 @@ static int msm_fb_check_var(struct fb_var_screeninfo *var, struct fb_info *info)
 		break;
 
 	case 32:
-		if ((var->blue.offset != 8) ||
-			(var->green.offset != 16) ||
-			(var->red.offset != 24) ||
-			(var->blue.length != 8) ||
-			(var->green.length != 8) ||
-			(var->red.length != 8) ||
-			(var->blue.msb_right != 0) ||
-			(var->green.msb_right != 0) ||
-			(var->red.msb_right != 0) ||
-			!(((var->transp.offset == 0) &&
-				(var->transp.length == 8)) ||
-			((var->transp.offset == 0) &&
-				(var->transp.length == 8))))
+		/* Figure out if the user meant RGBA or ARGB
+		   and verify the position of the RGB components */
+
+		if (var->transp.offset == 24) {
+			if ((var->blue.offset != 0) ||
+			    (var->green.offset != 8) ||
+			    (var->red.offset != 16))
 				return -EINVAL;
+		} else if (var->transp.offset == 0) {
+			if ((var->blue.offset != 8) ||
+			    (var->green.offset != 16) ||
+			    (var->red.offset != 24))
+				return -EINVAL;
+		} else
+			return -EINVAL;
+
+		/* Check the common values for both RGBA and ARGB */
+
+		if ((var->blue.length != 8) ||
+		    (var->green.length != 8) ||
+		    (var->red.length != 8) ||
+		    (var->transp.length != 8) ||
+		    (var->blue.msb_right != 0) ||
+		    (var->green.msb_right != 0) ||
+		    (var->red.msb_right != 0))
+			return -EINVAL;
+
 		break;
 
 	default:
@@ -1346,7 +1358,10 @@ static int msm_fb_set_par(struct fb_info *info)
 		break;
 
 	case 32:
-		mfd->fb_imgType = MDP_RGBA_8888;
+		if (var->transp.offset == 24)
+			mfd->fb_imgType = MDP_ARGB_8888;
+		else
+			mfd->fb_imgType = MDP_RGBA_8888;
 		break;
 
 	default:
@@ -1560,7 +1575,7 @@ int mdp_blit(struct fb_info *info, struct mdp_blit_req *req)
 		if (((req->dst_rect.w == 1) && ((req->src_rect.w != 1) ||
 			(req->dst_rect.h != req->src_rect.h))) ||
 			((req->dst_rect.h == 1) && ((req->src_rect.h != 1) ||
-			(req->dst_rect.h != req->src_rect.h)))) {
+			(req->dst_rect.w != req->src_rect.w)))) {
 			printk(KERN_ERR "mpd_ppp: error scaling when size is 1!\n");
 			return -EINVAL;
 		}
@@ -1576,7 +1591,12 @@ int mdp_blit(struct fb_info *info, struct mdp_blit_req *req)
 #if defined CONFIG_FB_MSM_MDP31
 	/* MDP width split workaround */
 	remainder = (req->dst_rect.w)%32;
-	is_bpp_4 = (mdp_get_bytes_per_pixel(req->dst.format) == 4) ? 1 : 0;
+	ret = mdp_get_bytes_per_pixel(req->dst.format);
+	if (ret <= 0) {
+		printk(KERN_ERR "mdp_ppp: incorrect bpp!\n");
+		return -EINVAL;
+	}
+	is_bpp_4 = (ret == 4) ? 1 : 0;
 
 	if ((is_bpp_4 && (remainder == 6 || remainder == 14 ||
 	remainder == 22 || remainder == 30)) || remainder == 3 ||
@@ -1891,12 +1911,17 @@ static inline void msm_fb_dma_barrier_for_rect(struct fb_info *info,
 	 *       included in the address range rather than
 	 *       doing multiple calls for each row.
 	 */
-
+	unsigned long start;
+	size_t size;
 	char * const pmem_start = info->screen_base;
 	int bytes_per_pixel = mdp_get_bytes_per_pixel(img->format);
-	unsigned long start = (unsigned long)pmem_start + img->offset +
+	if (bytes_per_pixel <= 0) {
+		printk(KERN_ERR "%s incorrect bpp!\n", __func__);
+		return;
+	}
+	start = (unsigned long)pmem_start + img->offset +
 		(img->width * rect->y + rect->x) * bytes_per_pixel;
-	size_t size  = (rect->h * img->width + rect->w) * bytes_per_pixel;
+	size  = (rect->h * img->width + rect->w) * bytes_per_pixel;
 	(*dma_barrier_fp) ((void *) start, size);
 
 }
@@ -2255,8 +2280,10 @@ static int msmfb_overlay_play(struct fb_info *info, unsigned long *argp)
 
 	ret = mdp4_overlay_play(info, &req, &p_src_file);
 
+#ifdef CONFIG_ANDROID_PMEM
 	if (p_src_file)
 		put_pmem_file(p_src_file);
+#endif
 
 	return ret;
 }
@@ -2336,13 +2363,6 @@ static int msm_fb_ioctl(struct fb_info *info, unsigned int cmd,
 #endif
 	struct mdp_page_protection fb_page_protection;
 	int ret = 0;
-
-#ifdef CONFIG_FB_MSM_OVERLAY
-	/* always let unset cmd go */
-	if (cmd != MSMFB_OVERLAY_UNSET)
-#endif
-		if (!mfd->op_enable)
-			return -EPERM;
 
 	switch (cmd) {
 #ifdef CONFIG_FB_MSM_OVERLAY
@@ -2631,6 +2651,23 @@ void msm_fb_add_device(struct platform_device *pdev)
 	}
 }
 EXPORT_SYMBOL(msm_fb_add_device);
+
+int get_fb_phys_info(unsigned long *start, unsigned long *len, int fb_num)
+{
+	struct fb_info *info;
+
+	if (fb_num > MAX_FBI_LIST)
+		return -1;
+
+	info = fbi_list[fb_num];
+	if (!info)
+		return -1;
+
+	*start = info->fix.smem_start;
+	*len = info->fix.smem_len;
+	return 0;
+}
+EXPORT_SYMBOL(get_fb_phys_info);
 
 int __init msm_fb_init(void)
 {

@@ -1,28 +1,29 @@
-/* Copyright (c) 2008-2009, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2008-2010, Code Aurora Forum. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are met:
+ * modification, are permitted provided that the following conditions are
+ * met:
  *     * Redistributions of source code must retain the above copyright
  *       notice, this list of conditions and the following disclaimer.
- *     * Redistributions in binary form must reproduce the above copyright
- *       notice, this list of conditions and the following disclaimer in the
- *       documentation and/or other materials provided with the distribution.
- *     * Neither the name of Code Aurora nor
- *       the names of its contributors may be used to endorse or promote
- *       products derived from this software without specific prior written
- *       permission.
+ *     * Redistributions in binary form must reproduce the above
+ *       copyright notice, this list of conditions and the following
+ *       disclaimer in the documentation and/or other materials provided
+ *       with the distribution.
+ *     * Neither the name of Code Aurora Forum, Inc. nor the names of its
+ *       contributors may be used to endorse or promote products derived
+ *       from this software without specific prior written permission.
  *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
- * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
- * NON-INFRINGEMENT ARE DISCLAIMED.  IN NO EVENT SHALL THE COPYRIGHT OWNER OR
- * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
- * EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
- * PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS;
- * OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
- * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
- * OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
- * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * THIS SOFTWARE IS PROVIDED "AS IS" AND ANY EXPRESS OR IMPLIED
+ * WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
+ * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT
+ * ARE DISCLAIMED.  IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS
+ * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR
+ * BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+ * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
+ * OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
+ * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
  */
 
@@ -63,12 +64,7 @@
 #define MDDI_PAD_IO_CTL         0x00a0
 #define MDDI_PAD_CAL            0x00a4
 
-#ifdef ENABLE_MDDI_MULTI_READ_WRITE
-#define MDDI_HOST_MAX_CLIENT_REG_IN_SAME_ADDR 128
-#else
-#define MDDI_HOST_MAX_CLIENT_REG_IN_SAME_ADDR 1
-#endif
-
+extern int32 mddi_client_type;
 extern u32 mddi_msg_level;
 
 /* No longer need to write to clear these registers */
@@ -384,24 +380,17 @@ typedef struct GCC_PACKED {
 	uint16 parameter_CRC;
 	/* 16-bit CRC of all bytes from the Packet Length to the Register Address. */
 
-	uint32 register_data_list[MDDI_HOST_MAX_CLIENT_REG_IN_SAME_ADDR];
+	uint32 register_data_list;
 	/* list of 4-byte register data values for/from client registers */
-	/* For multi-read/write, 512(128 * 4) bytes of data available */
 
 } mddi_register_access_packet_type;
 
 typedef union GCC_PACKED {
 	mddi_video_stream_packet_type video_pkt;
 	mddi_register_access_packet_type register_pkt;
-#ifdef ENABLE_MDDI_MULTI_READ_WRITE
-	/* add 1008 byte pad to ensure 1024 byte llist struct, that can be
-	 * manipulated easily with cache */
-	uint32 alignment_pad[252];	/* 1008 bytes */
-#else
 	/* add 48 byte pad to ensure 64 byte llist struct, that can be
 	 * manipulated easily with cache */
 	uint32 alignment_pad[12];	/* 48 bytes */
-#endif
 } mddi_packet_header_type;
 
 typedef struct GCC_PACKED mddi_host_llist_struct {
@@ -422,11 +411,7 @@ typedef struct {
 	boolean in_use;
 } mddi_linked_list_notify_type;
 
-#ifdef ENABLE_MDDI_MULTI_READ_WRITE
-#define MDDI_LLIST_POOL_SIZE 0x10000
-#else
 #define MDDI_LLIST_POOL_SIZE 0x1000
-#endif
 #define MDDI_MAX_NUM_LLIST_ITEMS (MDDI_LLIST_POOL_SIZE / \
 		 sizeof(mddi_linked_list_type))
 #define UNASSIGNED_INDEX MDDI_MAX_NUM_LLIST_ITEMS

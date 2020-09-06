@@ -487,11 +487,15 @@ static struct snd_pcm_ops msm_pcm_ops = {
 
 static int msm_pcm_remove(struct platform_device *devptr)
 {
+#if 0
 	struct snd_soc_device *socdev = platform_get_drvdata(devptr);
 	snd_soc_free_pcms(socdev);
 	kfree(socdev->codec);
 	platform_set_drvdata(devptr, NULL);
 	return 0;
+#endif
+	printk("DISABLED %s\n", __func__);
+	return -1;
 }
 
 static int pcm_preallocate_dma_buffer(struct snd_pcm *pcm,

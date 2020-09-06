@@ -1,59 +1,26 @@
 /* Copyright (c) 2009-2010, Code Aurora Forum. All rights reserved.
  *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are met:
- *     * Redistributions of source code must retain the above copyright
- *       notice, this list of conditions and the following disclaimer.
- *     * Redistributions in binary form must reproduce the above copyright
- *       notice, this list of conditions and the following disclaimer in the
- *       documentation and/or other materials provided with the distribution.
- *     * Neither the name of Code Aurora Forum nor
- *       the names of its contributors may be used to endorse or promote
- *       products derived from this software without specific prior written
- *       permission.
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 and
+ * only version 2 as published by the Free Software Foundation.
  *
- * Alternatively, provided that this notice is retained in full, this software
- * may be relicensed by the recipient under the terms of the GNU General Public
- * License version 2 ("GPL") and only version 2, in which case the provisions of
- * the GPL apply INSTEAD OF those given above.  If the recipient relicenses the
- * software under the GPL, then the identification text in the MODULE_LICENSE
- * macro must be changed to reflect "GPLv2" instead of "Dual BSD/GPL".  Once a
- * recipient changes the license terms to the GPL, subsequent recipients shall
- * not relicense under alternate licensing terms, including the BSD or dual
- * BSD/GPL terms.  In addition, the following license statement immediately
- * below and between the words START and END shall also then apply when this
- * software is relicensed under the GPL:
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * START
- *
- * This program is free software; you can redistribute it and/or modify it under
- * the terms of the GNU General Public License version 2 and only version 2 as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful, but WITHOUT
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
- * FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more
- * details.
- *
- * You should have received a copy of the GNU General Public License along with
- * this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
- *
- * END
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
- * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE
- * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
- * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
- * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
- * POSSIBILITY OF SUCH DAMAGE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+ * 02110-1301, USA.
  *
  */
+
+/*
+ * this needs to be before <linux/kernel.h> is loaded,
+ * and <linux/sched.h> loads <linux/kernel.h>
+ */
+#define DEBUG  1
 
 #include <linux/earlysuspend.h>
 #include <linux/err.h>
@@ -108,15 +75,12 @@
 #define RPC_TYPE_REPLY   1
 #define RPC_REQ_REPLY_COMMON_HEADER_SIZE   (3 * sizeof(uint32_t))
 
-#define DEBUG  0
 
 #if DEBUG
-#define DBG(x...) pr_info(x)
+#define DBG_LIMIT(x...) do {if (printk_ratelimit()) pr_debug(x); } while (0)
 #else
-#define DBG(x...) do {} while (0)
+#define DBG_LIMIT(x...) do {} while (0)
 #endif
-
-#define PR_LIMIT(x...)	do {if (printk_ratelimit()) pr_info(x); } while (0)
 
 enum {
 	BATTERY_REGISTRATION_SUCCESSFUL = 0,
@@ -212,6 +176,7 @@ enum chg_battery_level_type {
 	BATTERY_LEVEL_INVALID
 };
 
+#ifndef CONFIG_BATTERY_MSM_FAKE
 struct rpc_reply_batt_chg_v1 {
 	struct rpc_reply_hdr hdr;
 	u32 	more_data;
@@ -239,6 +204,7 @@ union rpc_reply_batt_chg {
 };
 
 static union rpc_reply_batt_chg rep_batt_chg;
+#endif
 
 struct msm_battery_info {
 	u32 voltage_max_design;
@@ -270,6 +236,7 @@ struct msm_battery_info {
 	struct power_supply *msm_psy_ac;
 	struct power_supply *msm_psy_usb;
 	struct power_supply *msm_psy_batt;
+	struct power_supply *current_ps;
 
 	struct msm_rpc_client *batt_client;
 	struct msm_rpc_endpoint *chg_ep;
@@ -313,14 +280,10 @@ static int msm_power_get_property(struct power_supply *psy,
 		if (psy->type == POWER_SUPPLY_TYPE_MAINS) {
 			val->intval = msm_batt_info.current_chg_source & AC_CHG
 			    ? 1 : 0;
-			DBG("%s: power supply = %s, online = %d\n",
-			    __func__, psy->name, val->intval);
 		}
 		if (psy->type == POWER_SUPPLY_TYPE_USB) {
 			val->intval = msm_batt_info.current_chg_source & USB_CHG
 			    ? 1 : 0;
-			DBG("%s: power supply = %s, online = %d\n",
-			    __func__, psy->name, val->intval);
 		}
 		break;
 	default:
@@ -403,6 +366,7 @@ static struct power_supply msm_psy_batt = {
 	.get_property = msm_batt_power_get_property,
 };
 
+#ifndef CONFIG_BATTERY_MSM_FAKE
 struct msm_batt_get_volt_ret_data {
 	u32 battery_voltage;
 };
@@ -518,20 +482,20 @@ static void msm_batt_update_psy_status(void)
 		 */
 		unnecessary_event_count++;
 		if ((unnecessary_event_count % 20) == 1)
-			PR_LIMIT("BATT: same event count = %u\n",
+			DBG_LIMIT("BATT: same event count = %u\n",
 				 unnecessary_event_count);
 		return;
 	}
 
 	unnecessary_event_count = 0;
 
-	PR_LIMIT("BATT: rcvd: %d, %d, %d, %d; %d, %d\n",
+	DBG_LIMIT("BATT: rcvd: %d, %d, %d, %d; %d, %d\n",
 		 charger_status, charger_type, battery_status,
 		 battery_level, battery_voltage, battery_temp);
 
 	if (battery_status == BATTERY_STATUS_INVALID &&
 	    battery_level != BATTERY_LEVEL_INVALID) {
-		PR_LIMIT("BATT: change status(%d) to (%d) for level=%d\n",
+		DBG_LIMIT("BATT: change status(%d) to (%d) for level=%d\n",
 			 battery_status, BATTERY_STATUS_GOOD, battery_level);
 		battery_status = BATTERY_STATUS_GOOD;
 	}
@@ -540,26 +504,26 @@ static void msm_batt_update_psy_status(void)
 		if (charger_type == CHARGER_TYPE_USB_WALL ||
 		    charger_type == CHARGER_TYPE_USB_PC ||
 		    charger_type == CHARGER_TYPE_USB_CARKIT) {
-			PR_LIMIT("BATT: USB charger plugged in\n");
+			DBG_LIMIT("BATT: USB charger plugged in\n");
 			msm_batt_info.current_chg_source = USB_CHG;
 			supp = &msm_psy_usb;
 		} else if (charger_type == CHARGER_TYPE_WALL) {
-			PR_LIMIT("BATT: AC Wall changer plugged in\n");
+			DBG_LIMIT("BATT: AC Wall changer plugged in\n");
 			msm_batt_info.current_chg_source = AC_CHG;
 			supp = &msm_psy_ac;
 		} else {
 			if (msm_batt_info.current_chg_source & AC_CHG)
-				PR_LIMIT("BATT: AC Wall charger removed\n");
+				DBG_LIMIT("BATT: AC Wall charger removed\n");
 			else if (msm_batt_info.current_chg_source & USB_CHG)
-				PR_LIMIT("BATT: USB charger removed\n");
+				DBG_LIMIT("BATT: USB charger removed\n");
 			else
-				PR_LIMIT("BATT: no charger present\n");
+				DBG_LIMIT("BATT: No charger present\n");
 			msm_batt_info.current_chg_source = 0;
 			supp = &msm_psy_batt;
 
 			/* Correct charger status */
 			if (charger_status != CHARGER_STATUS_INVALID) {
-				PR_LIMIT("BATT: No charging!\n");
+				DBG_LIMIT("BATT: No charging!\n");
 				charger_status = CHARGER_STATUS_INVALID;
 				msm_batt_info.batt_status =
 					POWER_SUPPLY_STATUS_NOT_CHARGING;
@@ -572,7 +536,7 @@ static void msm_batt_update_psy_status(void)
 		if (charger_status == CHARGER_STATUS_GOOD ||
 		    charger_status == CHARGER_STATUS_WEAK) {
 			if (msm_batt_info.current_chg_source) {
-				PR_LIMIT("BATT: Charging.\n");
+				DBG_LIMIT("BATT: Charging.\n");
 				msm_batt_info.batt_status =
 					POWER_SUPPLY_STATUS_CHARGING;
 
@@ -583,7 +547,7 @@ static void msm_batt_update_psy_status(void)
 					supp = &msm_psy_usb;
 			}
 		} else {
-			PR_LIMIT("BATT: No charging.\n");
+			DBG_LIMIT("BATT: No charging.\n");
 			msm_batt_info.batt_status =
 				POWER_SUPPLY_STATUS_NOT_CHARGING;
 			supp = &msm_psy_batt;
@@ -592,7 +556,7 @@ static void msm_batt_update_psy_status(void)
 		/* Correct charger status */
 		if (charger_type != CHARGER_TYPE_INVALID &&
 		    charger_status == CHARGER_STATUS_GOOD) {
-			PR_LIMIT("BATT: In charging\n");
+			DBG_LIMIT("BATT: In charging\n");
 			msm_batt_info.batt_status =
 				POWER_SUPPLY_STATUS_CHARGING;
 		}
@@ -601,7 +565,7 @@ static void msm_batt_update_psy_status(void)
 	/* Correct battery voltage and status */
 	if (!battery_voltage) {
 		if (charger_status == CHARGER_STATUS_INVALID) {
-			PR_LIMIT("BATT: Read VBATT\n");
+			DBG_LIMIT("BATT: Read VBATT\n");
 			battery_voltage = msm_batt_get_vbatt_voltage();
 		} else
 			/* Use previous */
@@ -610,7 +574,7 @@ static void msm_batt_update_psy_status(void)
 	if (battery_status == BATTERY_STATUS_INVALID) {
 		if (battery_voltage >= msm_batt_info.voltage_min_design &&
 		    battery_voltage <= msm_batt_info.voltage_max_design) {
-			PR_LIMIT("BATT: Battery valid\n");
+			DBG_LIMIT("BATT: Battery valid\n");
 			msm_batt_info.batt_valid = 1;
 			battery_status = BATTERY_STATUS_GOOD;
 		}
@@ -621,31 +585,31 @@ static void msm_batt_update_psy_status(void)
 			msm_batt_info.batt_valid = 1;
 
 			if (battery_status == BATTERY_STATUS_BAD) {
-				PR_LIMIT("BATT: Battery bad.\n");
+				DBG_LIMIT("BATT: Battery bad.\n");
 				msm_batt_info.batt_health =
 					POWER_SUPPLY_HEALTH_DEAD;
 			} else if (battery_status == BATTERY_STATUS_BAD_TEMP) {
-				PR_LIMIT("BATT: Battery overheat.\n");
+				DBG_LIMIT("BATT: Battery overheat.\n");
 				msm_batt_info.batt_health =
 					POWER_SUPPLY_HEALTH_OVERHEAT;
 			} else {
-				PR_LIMIT("BATT: Battery good.\n");
+				DBG_LIMIT("BATT: Battery good.\n");
 				msm_batt_info.batt_health =
 					POWER_SUPPLY_HEALTH_GOOD;
 			}
 		} else {
 			msm_batt_info.batt_valid = 0;
-			PR_LIMIT("BATT: Battery invalid.\n");
+			DBG_LIMIT("BATT: Battery invalid.\n");
 			msm_batt_info.batt_health = POWER_SUPPLY_HEALTH_UNKNOWN;
 		}
 
 		if (msm_batt_info.batt_status != POWER_SUPPLY_STATUS_CHARGING) {
 			if (battery_status == BATTERY_STATUS_INVALID) {
-				PR_LIMIT("BATT: Battery -> unknown\n");
+				DBG_LIMIT("BATT: Battery -> unknown\n");
 				msm_batt_info.batt_status =
 					POWER_SUPPLY_STATUS_UNKNOWN;
 			} else {
-				PR_LIMIT("BATT: Battery -> discharging\n");
+				DBG_LIMIT("BATT: Battery -> discharging\n");
 				msm_batt_info.batt_status =
 					POWER_SUPPLY_STATUS_DISCHARGING;
 			}
@@ -662,23 +626,28 @@ static void msm_batt_update_psy_status(void)
 		}
 	}
 
-	if (msm_batt_info.battery_voltage != battery_voltage) {
-		PR_LIMIT("BATT: New voltage = %u mV\n", battery_voltage);
-		msm_batt_info.batt_capacity =
-			msm_batt_info.calculate_capacity(battery_voltage);
-	}
-
-	if (supp) {
-		PR_LIMIT("BATT: supply = %s\n", supp->name);
-		power_supply_changed(supp);
-	}
-
 	msm_batt_info.charger_status 	= charger_status;
 	msm_batt_info.charger_type 	= charger_type;
 	msm_batt_info.battery_status 	= battery_status;
 	msm_batt_info.battery_level 	= battery_level;
-	msm_batt_info.battery_voltage  	= battery_voltage;
 	msm_batt_info.battery_temp 	= battery_temp;
+
+	if (msm_batt_info.battery_voltage != battery_voltage) {
+		msm_batt_info.battery_voltage  	= battery_voltage;
+		msm_batt_info.batt_capacity =
+			msm_batt_info.calculate_capacity(battery_voltage);
+		DBG_LIMIT("BATT: voltage = %u mV [capacity = %d%%]\n",
+			 battery_voltage, msm_batt_info.batt_capacity);
+
+		if (!supp)
+			supp = msm_batt_info.current_ps;
+	}
+
+	if (supp) {
+		msm_batt_info.current_ps = supp;
+		DBG_LIMIT("BATT: Supply = %s\n", supp->name);
+		power_supply_changed(supp);
+	}
 }
 
 #ifdef CONFIG_HAS_EARLYSUSPEND
@@ -786,7 +755,7 @@ void msm_batt_early_suspend(struct early_suspend *h)
 {
 	int rc;
 
-	pr_info("%s: enter\n", __func__);
+	pr_debug("%s: enter\n", __func__);
 
 	if (msm_batt_info.batt_handle != INVALID_BATT_HANDLE) {
 		rc = msm_batt_modify_client(msm_batt_info.batt_handle,
@@ -803,14 +772,14 @@ void msm_batt_early_suspend(struct early_suspend *h)
 		return;
 	}
 
-	pr_info("%s: exit\n", __func__);
+	pr_debug("%s: exit\n", __func__);
 }
 
 void msm_batt_late_resume(struct early_suspend *h)
 {
 	int rc;
 
-	pr_info("%s: exter\n", __func__);
+	pr_debug("%s: enter\n", __func__);
 
 	if (msm_batt_info.batt_handle != INVALID_BATT_HANDLE) {
 		rc = msm_batt_modify_client(msm_batt_info.batt_handle,
@@ -826,7 +795,7 @@ void msm_batt_late_resume(struct early_suspend *h)
 		return;
 	}
 
-	pr_info("%s: exit\n", __func__);
+	pr_debug("%s: exit\n", __func__);
 }
 #endif
 
@@ -903,7 +872,7 @@ static int msm_batt_enable_filter(u32 vbatt_filter)
 		return -EIO;
 	}
 
-	pr_info("%s: enable vbatt filter: OK\n", __func__);
+	pr_debug("%s: enable vbatt filter: OK\n", __func__);
 	return rc;
 }
 
@@ -1003,7 +972,8 @@ static int msm_batt_register(u32 desired_batt_voltage,
 
 	msm_batt_info.batt_handle = batt_reg_rep.batt_handle;
 
-	pr_info("%s: got handle = %d\n", __func__, msm_batt_info.batt_handle);
+	pr_debug("%s: got handle = %d\n", __func__, msm_batt_info.batt_handle);
+
 	return 0;
 }
 
@@ -1066,13 +1036,16 @@ static int msm_batt_deregister(u32 batt_handle)
 		       __func__, rep.batt_error, batt_handle);
 		return -EIO;
 	}
+
 	return 0;
 }
+#endif  /* CONFIG_BATTERY_MSM_FAKE */
 
 static int msm_batt_cleanup(void)
 {
 	int rc = 0;
 
+#ifndef CONFIG_BATTERY_MSM_FAKE
 	if (msm_batt_info.batt_handle != INVALID_BATT_HANDLE) {
 
 		rc = msm_batt_deregister(msm_batt_info.batt_handle);
@@ -1085,6 +1058,7 @@ static int msm_batt_cleanup(void)
 
 	if (msm_batt_info.batt_client)
 		msm_rpc_unregister_client(msm_batt_info.batt_client);
+#endif  /* CONFIG_BATTERY_MSM_FAKE */
 
 	if (msm_batt_info.msm_psy_ac)
 		power_supply_unregister(msm_batt_info.msm_psy_ac);
@@ -1094,7 +1068,7 @@ static int msm_batt_cleanup(void)
 	if (msm_batt_info.msm_psy_batt)
 		power_supply_unregister(msm_batt_info.msm_psy_batt);
 
-
+#ifndef CONFIG_BATTERY_MSM_FAKE
 	if (msm_batt_info.chg_ep) {
 		rc = msm_rpc_close(msm_batt_info.chg_ep);
 		if (rc < 0) {
@@ -1107,6 +1081,7 @@ static int msm_batt_cleanup(void)
 	if (msm_batt_info.early_suspend.suspend == msm_batt_early_suspend)
 		unregister_early_suspend(&msm_batt_info.early_suspend);
 #endif
+#endif
 	return rc;
 }
 
@@ -1115,11 +1090,16 @@ static u32 msm_batt_capacity(u32 current_voltage)
 	u32 low_voltage = msm_batt_info.voltage_min_design;
 	u32 high_voltage = msm_batt_info.voltage_max_design;
 
-	return (current_voltage - low_voltage) * 100
-		/ (high_voltage - low_voltage);
+	if (current_voltage <= low_voltage)
+		return 0;
+	else if (current_voltage >= high_voltage)
+		return 100;
+	else
+		return (current_voltage - low_voltage) * 100
+			/ (high_voltage - low_voltage);
 }
 
-
+#ifndef CONFIG_BATTERY_MSM_FAKE
 int msm_batt_get_charger_api_version(void)
 {
 	int rc ;
@@ -1206,7 +1186,7 @@ int msm_batt_get_charger_api_version(void)
 		rc = be32_to_cpu(
 			rep_chg_api_ver->chg_api_versions[num_of_versions - 1]);
 
-		pr_info("%s: num_of_chg_api_versions = %u. "
+		pr_debug("%s: num_of_chg_api_versions = %u. "
 			"The chg api version = 0x%08x\n", __func__,
 			num_of_versions, rc);
 		break;
@@ -1250,6 +1230,7 @@ static int msm_batt_cb_func(struct msm_rpc_client *client,
 
 	return rc;
 }
+#endif  /* CONFIG_BATTERY_MSM_FAKE */
 
 static int __devinit msm_batt_probe(struct platform_device *pdev)
 {
@@ -1263,7 +1244,11 @@ static int __devinit msm_batt_probe(struct platform_device *pdev)
 		return -EINVAL;
 	}
 
+#ifndef CONFIG_BATTERY_MSM_FAKE
 	if (pdata->avail_chg_sources & AC_CHG) {
+#else
+	{
+#endif
 		rc = power_supply_register(&pdev->dev, &msm_psy_ac);
 		if (rc < 0) {
 			dev_err(&pdev->dev,
@@ -1323,7 +1308,7 @@ static int __devinit msm_batt_probe(struct platform_device *pdev)
 	}
 	msm_batt_info.msm_psy_batt = &msm_psy_batt;
 
-
+#ifndef CONFIG_BATTERY_MSM_FAKE
 	rc = msm_batt_register(BATTERY_LOW, BATTERY_ALL_ACTIVITY,
 			       BATTERY_CB_ID_ALL_ACTIV, BATTERY_ALL_ACTIVITY);
 	if (rc < 0) {
@@ -1350,6 +1335,10 @@ static int __devinit msm_batt_probe(struct platform_device *pdev)
 	register_early_suspend(&msm_batt_info.early_suspend);
 #endif
 	msm_batt_update_psy_status();
+
+#else
+	power_supply_changed(&msm_psy_ac);
+#endif  /* CONFIG_BATTERY_MSM_FAKE */
 
 	return 0;
 }
@@ -1380,6 +1369,9 @@ static int __devinit msm_batt_init_rpc(void)
 {
 	int rc;
 
+#ifdef CONFIG_BATTERY_MSM_FAKE
+	pr_info("Faking MSM battery\n");
+#else
 	msm_batt_info.chg_ep =
 		msm_rpc_connect_compatible(CHG_RPC_PROG, CHG_RPC_VER_2_2, 0);
 
@@ -1435,6 +1427,7 @@ static int __devinit msm_batt_init_rpc(void)
 		msm_batt_info.batt_client = NULL;
 		return rc;
 	}
+#endif  /* CONFIG_BATTERY_MSM_FAKE */
 
 	rc = platform_driver_register(&msm_batt_driver);
 
@@ -1449,7 +1442,7 @@ static int __init msm_batt_init(void)
 {
 	int rc;
 
-	pr_info("%s: enter\n", __func__);
+	pr_debug("%s: enter\n", __func__);
 
 	rc = msm_batt_init_rpc();
 
@@ -1459,8 +1452,10 @@ static int __init msm_batt_init(void)
 		return rc;
 	}
 
-	pr_info("%s: Charger/Battery = 0x%08x/0x%08x (RPC version)\n", __func__,
-		msm_batt_info.chg_api_version, msm_batt_info.batt_api_version);
+	pr_info("%s: Charger/Battery = 0x%08x/0x%08x (RPC version)\n",
+		__func__, msm_batt_info.chg_api_version,
+		msm_batt_info.batt_api_version);
+
 	return 0;
 }
 
@@ -1472,7 +1467,7 @@ static void __exit msm_batt_exit(void)
 module_init(msm_batt_init);
 module_exit(msm_batt_exit);
 
-MODULE_LICENSE("Dual BSD/GPL");
+MODULE_LICENSE("GPL v2");
 MODULE_AUTHOR("Kiran Kandi, Qualcomm Innovation Center, Inc.");
 MODULE_DESCRIPTION("Battery driver for Qualcomm MSM chipsets.");
 MODULE_VERSION("1.0");

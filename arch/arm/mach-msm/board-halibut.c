@@ -1,7 +1,7 @@
 /* linux/arch/arm/mach-msm/board-halibut.c
  *
  * Copyright (C) 2007 Google, Inc.
- * Copyright (c) 2008-2009, Code Aurora Forum. All rights reserved.
+ * Copyright (c) 2008-2010, Code Aurora Forum. All rights reserved.
  * Author: Brian Swetland <swetland@google.com>
  *
  * This software is licensed under the terms of the GNU General Public
@@ -49,6 +49,7 @@
 #include <mach/memory.h>
 #include <mach/msm_battery.h>
 #include <mach/camera.h>
+#include <mach/rpc_server_handset.h>
 
 #ifdef CONFIG_USB_FUNCTION
 #include <linux/usb/mass_storage_function.h>
@@ -131,9 +132,16 @@ static struct platform_device android_usb_device = {
 };
 #endif
 
+static struct msm_handset_platform_data hs_platform_data = {
+	.hs_name = "7k_handset",
+};
+
 static struct platform_device hs_device = {
 	.name   = "msm-handset",
 	.id     = -1,
+	.dev    = {
+		.platform_data = &hs_platform_data,
+	},
 };
 
 #ifdef CONFIG_USB_FUNCTION
@@ -544,6 +552,96 @@ static struct platform_device halibut_snd = {
 	.id = -1,
 	.dev    = {
 		.platform_data = &halibut_snd_endpoints
+	},
+};
+
+#define DEC0_FORMAT ((1<<MSM_ADSP_CODEC_MP3)| \
+	(1<<MSM_ADSP_CODEC_AAC)|(1<<MSM_ADSP_CODEC_WMA)| \
+	(1<<MSM_ADSP_CODEC_WMAPRO)|(1<<MSM_ADSP_CODEC_AMRNB)| \
+	(1<<MSM_ADSP_CODEC_WAV)|(1<<MSM_ADSP_CODEC_ADPCM)| \
+	(1<<MSM_ADSP_CODEC_YADPCM)|(1<<MSM_ADSP_CODEC_EVRC)| \
+	(1<<MSM_ADSP_CODEC_QCELP))
+#define DEC1_FORMAT ((1<<MSM_ADSP_CODEC_WAV)|(1<<MSM_ADSP_CODEC_ADPCM)| \
+	(1<<MSM_ADSP_CODEC_YADPCM)|(1<<MSM_ADSP_CODEC_QCELP))
+#define DEC2_FORMAT ((1<<MSM_ADSP_CODEC_WAV)|(1<<MSM_ADSP_CODEC_ADPCM)| \
+	(1<<MSM_ADSP_CODEC_YADPCM)|(1<<MSM_ADSP_CODEC_QCELP))
+#define DEC3_FORMAT ((1<<MSM_ADSP_CODEC_WAV)|(1<<MSM_ADSP_CODEC_ADPCM)| \
+	(1<<MSM_ADSP_CODEC_YADPCM)|(1<<MSM_ADSP_CODEC_QCELP))
+#define DEC4_FORMAT (1<<MSM_ADSP_CODEC_MIDI)
+
+static unsigned int dec_concurrency_table[] = {
+	/* Audio LP */
+	(DEC0_FORMAT|(1<<MSM_ADSP_MODE_TUNNEL)|(1<<MSM_ADSP_OP_DMA)), 0,
+	0, 0, 0,
+
+	/* Concurrency 1 */
+	(DEC0_FORMAT|(1<<MSM_ADSP_MODE_TUNNEL)|(1<<MSM_ADSP_OP_DM)),
+	(DEC1_FORMAT|(1<<MSM_ADSP_MODE_TUNNEL)|(1<<MSM_ADSP_OP_DM)),
+	(DEC2_FORMAT|(1<<MSM_ADSP_MODE_TUNNEL)|(1<<MSM_ADSP_OP_DM)),
+	(DEC3_FORMAT|(1<<MSM_ADSP_MODE_TUNNEL)|(1<<MSM_ADSP_OP_DM)),
+	(DEC4_FORMAT),
+
+	 /* Concurrency 2 */
+	(DEC0_FORMAT|(1<<MSM_ADSP_MODE_TUNNEL)|(1<<MSM_ADSP_OP_DM)),
+	(DEC1_FORMAT|(1<<MSM_ADSP_MODE_TUNNEL)|(1<<MSM_ADSP_OP_DM)),
+	(DEC2_FORMAT|(1<<MSM_ADSP_MODE_TUNNEL)|(1<<MSM_ADSP_OP_DM)),
+	(DEC3_FORMAT|(1<<MSM_ADSP_MODE_TUNNEL)|(1<<MSM_ADSP_OP_DM)),
+	(DEC4_FORMAT),
+
+	/* Concurrency 3 */
+	(DEC0_FORMAT|(1<<MSM_ADSP_MODE_TUNNEL)|(1<<MSM_ADSP_OP_DM)),
+	(DEC1_FORMAT|(1<<MSM_ADSP_MODE_TUNNEL)|(1<<MSM_ADSP_OP_DM)),
+	(DEC2_FORMAT|(1<<MSM_ADSP_MODE_TUNNEL)|(1<<MSM_ADSP_OP_DM)),
+	(DEC3_FORMAT|(1<<MSM_ADSP_MODE_NONTUNNEL)|(1<<MSM_ADSP_OP_DM)),
+	(DEC4_FORMAT),
+
+	/* Concurrency 4 */
+	(DEC0_FORMAT|(1<<MSM_ADSP_MODE_TUNNEL)|(1<<MSM_ADSP_OP_DM)),
+	(DEC1_FORMAT|(1<<MSM_ADSP_MODE_TUNNEL)|(1<<MSM_ADSP_OP_DM)),
+	(DEC2_FORMAT|(1<<MSM_ADSP_MODE_NONTUNNEL)|(1<<MSM_ADSP_OP_DM)),
+	(DEC3_FORMAT|(1<<MSM_ADSP_MODE_NONTUNNEL)|(1<<MSM_ADSP_OP_DM)),
+	(DEC4_FORMAT),
+
+	/* Concurrency 5 */
+	(DEC0_FORMAT|(1<<MSM_ADSP_MODE_TUNNEL)|(1<<MSM_ADSP_OP_DM)),
+	(DEC1_FORMAT|(1<<MSM_ADSP_MODE_NONTUNNEL)|(1<<MSM_ADSP_OP_DM)),
+	(DEC2_FORMAT|(1<<MSM_ADSP_MODE_NONTUNNEL)|(1<<MSM_ADSP_OP_DM)),
+	(DEC3_FORMAT|(1<<MSM_ADSP_MODE_NONTUNNEL)|(1<<MSM_ADSP_OP_DM)),
+	(DEC4_FORMAT),
+
+	/* Concurrency 6 */
+	(DEC0_FORMAT|(1<<MSM_ADSP_MODE_NONTUNNEL)|(1<<MSM_ADSP_OP_DM)),
+	(DEC1_FORMAT|(1<<MSM_ADSP_MODE_NONTUNNEL)|(1<<MSM_ADSP_OP_DM)),
+	(DEC2_FORMAT|(1<<MSM_ADSP_MODE_NONTUNNEL)|(1<<MSM_ADSP_OP_DM)),
+	(DEC3_FORMAT|(1<<MSM_ADSP_MODE_NONTUNNEL)|(1<<MSM_ADSP_OP_DM)),
+	(DEC4_FORMAT),
+};
+
+#define DEC_INFO(name, queueid, decid, nr_codec) { .module_name = name, \
+	.module_queueid = queueid, .module_decid = decid, \
+	.nr_codec_support = nr_codec}
+
+static struct msm_adspdec_info dec_info_list[] = {
+	DEC_INFO("AUDPLAY0TASK", 13, 0, 10), /* AudPlay0BitStreamCtrlQueue */
+	DEC_INFO("AUDPLAY1TASK", 14, 1, 4),  /* AudPlay1BitStreamCtrlQueue */
+	DEC_INFO("AUDPLAY2TASK", 15, 2, 4),  /* AudPlay2BitStreamCtrlQueue */
+	DEC_INFO("AUDPLAY3TASK", 16, 3, 4),  /* AudPlay3BitStreamCtrlQueue */
+	DEC_INFO("AUDPLAY4TASK", 17, 4, 1),  /* AudPlay4BitStreamCtrlQueue */
+};
+
+static struct msm_adspdec_database msm_device_adspdec_database = {
+	.num_dec = ARRAY_SIZE(dec_info_list),
+	.num_concurrency_support = (ARRAY_SIZE(dec_concurrency_table) / \
+					ARRAY_SIZE(dec_info_list)),
+	.dec_concurrency_table = dec_concurrency_table,
+	.dec_info_list = dec_info_list,
+};
+
+static struct platform_device msm_device_adspdec = {
+	.name = "msm_adspdec",
+	.id = -1,
+	.dev    = {
+		.platform_data = &msm_device_adspdec_database
 	},
 };
 
@@ -993,6 +1091,7 @@ static struct platform_device *devices[] __initdata = {
 	&msm_camera_sensor_mt9p012,
 #endif
 	&halibut_snd,
+	&msm_device_adspdec,
 	&msm_bluesleep_device,
 	&msm_fb_device,
 	&mddi_toshiba_device,
@@ -1201,6 +1300,10 @@ static struct mmc_platform_data halibut_sdcc_data = {
 	.status_irq	= MSM_GPIO_TO_INT(49),
 	.irq_flags      = IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING,
 #endif
+	.mmc_bus_width  = MMC_CAP_4_BIT_DATA,
+	.msmsdcc_fmin   = 144000,
+	.msmsdcc_fmid   = 25000000,
+	.msmsdcc_fmax   = 49152000,
 };
 
 static void __init halibut_init_mmc(void)
@@ -1305,6 +1408,8 @@ static void __init halibut_init(void)
 	if (socinfo_init() < 0)
 		BUG();
 
+	msm_clock_init(msm_clocks_7x01a, msm_num_clocks_7x01a);
+
 	if (machine_is_msm7201a_ffa()) {
 		smc91x_resources[0].start = 0x98000300;
 		smc91x_resources[0].end = 0x980003ff;
@@ -1351,7 +1456,7 @@ static void __init halibut_init(void)
 	msm_hsusb_rpc_connect();
 	msm_hsusb_set_vbus_state(1) ;
 #endif
-	msm_pm_set_platform_data(msm_pm_data);
+	msm_pm_set_platform_data(msm_pm_data, ARRAY_SIZE(msm_pm_data));
 }
 
 static unsigned pmem_kernel_ebi1_size = PMEM_KERNEL_EBI1_SIZE;
@@ -1459,7 +1564,6 @@ static void __init halibut_map_io(void)
 	msm_shared_ram_phys = 0x01F00000;
 
 	msm_map_common_io();
-	msm_clock_init(msm_clocks_7x01a, msm_num_clocks_7x01a);
 	msm_halibut_allocate_memory_regions();
 }
 

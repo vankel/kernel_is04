@@ -1,28 +1,29 @@
 /* Copyright (c) 2008-2009, Code Aurora Forum. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are met:
+ * modification, are permitted provided that the following conditions are
+ * met:
  *     * Redistributions of source code must retain the above copyright
  *       notice, this list of conditions and the following disclaimer.
- *     * Redistributions in binary form must reproduce the above copyright
- *       notice, this list of conditions and the following disclaimer in the
- *       documentation and/or other materials provided with the distribution.
- *     * Neither the name of Code Aurora nor
- *       the names of its contributors may be used to endorse or promote
- *       products derived from this software without specific prior written
- *       permission.
+ *     * Redistributions in binary form must reproduce the above
+ *       copyright notice, this list of conditions and the following
+ *       disclaimer in the documentation and/or other materials provided
+ *       with the distribution.
+ *     * Neither the name of Code Aurora Forum, Inc. nor the names of its
+ *       contributors may be used to endorse or promote products derived
+ *       from this software without specific prior written permission.
  *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
- * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
- * NON-INFRINGEMENT ARE DISCLAIMED.  IN NO EVENT SHALL THE COPYRIGHT OWNER OR
- * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
- * EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
- * PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS;
- * OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
- * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
- * OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
- * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * THIS SOFTWARE IS PROVIDED "AS IS" AND ANY EXPRESS OR IMPLIED
+ * WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
+ * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT
+ * ARE DISCLAIMED.  IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS
+ * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR
+ * BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+ * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
+ * OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
+ * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
  */
 
@@ -40,21 +41,34 @@
 /* Size of the USB buffers used for read and write*/
 #define USB_MAX_OUT_BUF 4096
 #define USB_MAX_IN_BUF  8192
+#define MAX_BUF_SIZE  	32768
 /* Size of the buffer used for deframing a packet
   reveived from the PC tool*/
 #define HDLC_MAX 4096
-#define HDLC_OUT_BUF_SIZE 8192
-#define POOL_TYPE_COPY 1
-#define POOL_TYPE_HDLC 0
-#define POOL_TYPE_USB_STRUCT 2
+#define HDLC_OUT_BUF_SIZE	8192
+#define POOL_TYPE_COPY		1
+#define POOL_TYPE_HDLC		0
+#define POOL_TYPE_USB_STRUCT	2
+#define MODEM_DATA 		1
+#define QDSP_DATA  		2
+#define APPS_DATA  		3
 /* Number of maximum USB requests that the USB layer should handle at
    one time. */
 #define MAX_DIAG_USB_REQUESTS 12
 #define MSG_MASK_SIZE 8000
 #define LOG_MASK_SIZE 1000
 #define EVENT_MASK_SIZE 1000
-#define REG_TABLE_SIZE 25
 #define PKT_SIZE 4096
+/* This is the maximum number of pkt registrations supported at initialization*/
+extern unsigned int diag_max_registration;
+extern unsigned int diag_threshold_registration;
+
+#define APPEND_DEBUG(ch) \
+do {							\
+	diag_debug_buf[diag_debug_buf_idx] = ch; \
+	(diag_debug_buf_idx < 1023) ? \
+	(diag_debug_buf_idx++) : (diag_debug_buf_idx = 0); \
+} while (0)
 
 struct diag_master_table {
 	uint16_t cmd_code;
@@ -64,6 +78,10 @@ struct diag_master_table {
 	int process_id;
 };
 
+struct diag_write_device {
+	void *buf;
+	int length;
+};
 
 struct diagchar_dev {
 
@@ -81,6 +99,9 @@ struct diagchar_dev {
 	int *client_map;
 	int *data_ready;
 	int num_clients;
+	struct diag_write_device *buf_tbl;
+
+	/* Memory pool parameters */
 	unsigned int itemsize;
 	unsigned int poolsize;
 	unsigned int itemsize_hdlc;
@@ -114,6 +135,8 @@ struct diagchar_dev {
 	struct workqueue_struct *diag_wq;
 	struct work_struct diag_read_work;
 	struct work_struct diag_drain_work;
+	struct work_struct diag_read_smd_work;
+	struct work_struct diag_read_smd_qdsp_work;
 	uint8_t *msg_masks;
 	uint8_t *log_masks;
 	uint8_t *event_masks;
@@ -124,6 +147,8 @@ struct diagchar_dev {
 	struct diag_request *usb_read_ptr;
 	struct diag_request *usb_write_ptr_svc;
 	struct diag_request *usb_write_ptr_qdsp;
+	int logging_mode;
+	int logging_process_id;
 };
 
 extern struct diagchar_dev *driver;

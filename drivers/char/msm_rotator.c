@@ -1,57 +1,18 @@
-/* Copyright (c) 2009, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2009-2010, Code Aurora Forum. All rights reserved.
  *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are met:
- *     * Redistributions of source code must retain the above copyright
- *       notice, this list of conditions and the following disclaimer.
- *     * Redistributions in binary form must reproduce the above copyright
- *       notice, this list of conditions and the following disclaimer in the
- *       documentation and/or other materials provided with the distribution.
- *     * Neither the name of Code Aurora Forum nor
- *       the names of its contributors may be used to endorse or promote
- *       products derived from this software without specific prior written
- *       permission.
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 and
+ * only version 2 as published by the Free Software Foundation.
  *
- * Alternatively, provided that this notice is retained in full, this software
- * may be relicensed by the recipient under the terms of the GNU General Public
- * License version 2 ("GPL") and only version 2, in which case the provisions of
- * the GPL apply INSTEAD OF those given above.  If the recipient relicenses the
- * software under the GPL, then the identification text in the MODULE_LICENSE
- * macro must be changed to reflect "GPLv2" instead of "Dual BSD/GPL".  Once a
- * recipient changes the license terms to the GPL, subsequent recipients shall
- * not relicense under alternate licensing terms, including the BSD or dual
- * BSD/GPL terms.  In addition, the following license statement immediately
- * below and between the words START and END shall also then apply when this
- * software is relicensed under the GPL:
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * START
- *
- * This program is free software; you can redistribute it and/or modify it under
- * the terms of the GNU General Public License version 2 and only version 2 as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful, but WITHOUT
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
- * FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more
- * details.
- *
- * You should have received a copy of the GNU General Public License along with
- * this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
- *
- * END
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
- * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE
- * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
- * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
- * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
- * POSSIBILITY OF SUCH DAMAGE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+ * 02110-1301, USA.
  *
  */
 #include <linux/platform_device.h>
@@ -69,6 +30,8 @@
 #include <mach/msm_rotator_imem.h>
 #include <linux/ktime.h>
 #include <linux/workqueue.h>
+#include <linux/file.h>
+#include <linux/major.h>
 
 #define DRIVER_NAME "msm_rotator"
 
@@ -445,7 +408,7 @@ static unsigned int tile_size(unsigned int src_width,
 	tile_h = tp->height * tp->row_tile_h;
 	row_num_w = (src_width + tile_w - 1) / tile_w;
 	row_num_h = (src_height + tile_h - 1) / tile_h;
-	return row_num_w * row_num_h * tile_w * tile_h;
+	return ((row_num_w * row_num_h * tile_w * tile_h) + 8191) & ~8191;
 }
 
 static int msm_rotator_ycxcx_h2v2_tile(struct msm_rotator_img_info *info,
@@ -688,12 +651,42 @@ static int msm_rotator_rgb_types(struct msm_rotator_img_info *info,
 	return 0;
 }
 
+static int get_img(int memory_id, unsigned long *start, unsigned long *len,
+		struct file **pp_file)
+{
+	int put_needed, ret = 0, fb_num;
+	struct file *file;
+#ifdef CONFIG_ANDROID_PMEM
+	unsigned long vstart;
+#endif
+
+#ifdef CONFIG_ANDROID_PMEM
+	if (!get_pmem_file(memory_id, start, &vstart, len, pp_file))
+		return 0;
+#endif
+	file = fget_light(memory_id, &put_needed);
+	if (file == NULL)
+		return -1;
+
+	if (MAJOR(file->f_dentry->d_inode->i_rdev) == FB_MAJOR) {
+		fb_num = MINOR(file->f_dentry->d_inode->i_rdev);
+		if (get_fb_phys_info(start, len, fb_num))
+			ret = -1;
+		else
+			*pp_file = file;
+	} else
+		ret = -1;
+	if (ret)
+		fput_light(file, put_needed);
+	return ret;
+}
+
 static int msm_rotator_do_rotate(unsigned long arg)
 {
 	int rc = 0;
 	unsigned int status;
 	struct msm_rotator_data_info info;
-	unsigned int in_paddr, out_paddr, vaddr;
+	unsigned int in_paddr, out_paddr;
 	unsigned long len;
 	struct file *src_file = 0;
 	struct file *dst_file = 0;
@@ -703,21 +696,19 @@ static int msm_rotator_do_rotate(unsigned long arg)
 	if (copy_from_user(&info, (void __user *)arg, sizeof(info)))
 		return -EFAULT;
 
-	rc = get_pmem_file(info.src.memory_id, (unsigned long *)&in_paddr,
-			   (unsigned long *)&vaddr, (unsigned long *)&len,
-			   &src_file);
+	rc = get_img(info.src.memory_id, (unsigned long *)&in_paddr,
+			(unsigned long *)&len, &src_file);
 	if (rc) {
-		printk(KERN_ERR "%s: in get_pmem_file() failed id=0x%08x\n",
+		printk(KERN_ERR "%s: in get_img() failed id=0x%08x\n",
 		       DRIVER_NAME, info.src.memory_id);
 		return rc;
 	}
 	in_paddr += info.src.offset;
 
-	rc = get_pmem_file(info.dst.memory_id, (unsigned long *)&out_paddr,
-			   (unsigned long *)&vaddr, (unsigned long *)&len,
-			   &dst_file);
+	rc = get_img(info.dst.memory_id, (unsigned long *)&out_paddr,
+			(unsigned long *)&len, &dst_file);
 	if (rc) {
-		printk(KERN_ERR "%s: out get_pmem_file() failed id=0x%08x\n",
+		printk(KERN_ERR "%s: out get_img() failed id=0x%08x\n",
 		       DRIVER_NAME, info.dst.memory_id);
 		return rc;
 	}
@@ -738,6 +729,15 @@ static int msm_rotator_do_rotate(unsigned long arg)
 		rc = -EINVAL;
 		goto do_rotate_unlock_mutex;
 	}
+
+	if (msm_rotator_dev->img_info[s]->enable == 0) {
+		dev_dbg(msm_rotator_dev->device,
+			"%s() : Session_id %d not enabled \n",
+			__func__, s);
+		rc = -EINVAL;
+		goto do_rotate_unlock_mutex;
+	}
+
 	cancel_delayed_work(&msm_rotator_dev->rot_clk_work);
 	if (msm_rotator_dev->rot_clk_state == CLK_DIS) {
 		enable_rot_clks();
@@ -814,8 +814,7 @@ static int msm_rotator_do_rotate(unsigned long arg)
 	if (rc != 0) {
 		msm_rotator_dev->last_session_idx = INVALID_SESSION;
 		goto do_rotate_exit;
-	} else
-		msm_rotator_dev->last_session_idx = s;
+	}
 
 	iowrite32(3, MSM_ROTATOR_INTR_ENABLE);
 
@@ -1073,7 +1072,9 @@ static int __devinit msm_rotator_probe(struct platform_device *pdev)
 	mutex_init(&msm_rotator_dev->rotator_lock);
 
 	msm_rotator_dev->pdev = pdev;
-	pdev->dev.driver_data = msm_rotator_dev;
+/*	pdev->dev.driver_data = msm_rotator_dev; */
+	platform_set_drvdata(pdev, msm_rotator_dev);
+
 
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	if (!res) {
@@ -1250,4 +1251,4 @@ module_exit(msm_rotator_exit);
 
 MODULE_DESCRIPTION("MSM Offline Image Rotator driver");
 MODULE_VERSION("1.0");
-MODULE_LICENSE("Dual BSD/GPL");
+MODULE_LICENSE("GPL v2");

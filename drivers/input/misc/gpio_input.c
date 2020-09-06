@@ -1,3 +1,5 @@
+#warning compile out
+#if 0
 /* drivers/input/misc/gpio_input.c
  *
  * Copyright (C) 2007 Google, Inc.
@@ -181,7 +183,7 @@ static irqreturn_t gpio_event_input_irq_handler(int irq, void *dev_id)
 					ds->info->type, key_entry->code,
 					keymap_index, key_entry->gpio);
 		} else {
-			disable_irq(irq);
+			disable_irq_nosync(irq);
 			ks->debounce = DEBOUNCE_UNSTABLE;
 		}
 		spin_unlock_irqrestore(&ds->irq_lock, irqflags);
@@ -244,11 +246,9 @@ int gpio_event_input_func(struct gpio_event_input_devs *input_devs,
 	di = container_of(info, struct gpio_event_input_info, info);
 
 	if (func == GPIO_EVENT_FUNC_SUSPEND) {
-		spin_lock_irqsave(&ds->irq_lock, irqflags);
 		if (ds->use_irq)
 			for (i = 0; i < di->keymap_size; i++)
 				disable_irq(gpio_to_irq(di->keymap[i].gpio));
-		spin_unlock_irqrestore(&ds->irq_lock, irqflags);
 		hrtimer_cancel(&ds->timer);
 		return 0;
 	}
@@ -352,3 +352,4 @@ err_bad_keymap:
 err_ds_alloc_failed:
 	return ret;
 }
+#endif

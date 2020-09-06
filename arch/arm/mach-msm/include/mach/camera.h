@@ -42,6 +42,7 @@
 #define NUM_AUTOFOCUS_MULTI_WINDOW_GRIDS 16
 #define NUM_STAT_OUTPUT_BUFFERS      3
 #define NUM_AF_STAT_OUTPUT_BUFFERS      3
+#define max_control_command_size 150
 
 enum msm_queue {
 	MSM_CAM_Q_CTRL,     /* control command or control command status */
@@ -118,7 +119,8 @@ struct msm_queue_cmd {
 	struct list_head list_pict;
 	enum msm_queue type;
 	void *command;
-	int on_heap;
+	atomic_t on_heap;
+	struct timespec ts;
 };
 
 struct msm_device_queue {
@@ -193,7 +195,7 @@ struct msm_control_device {
 	struct msm_device *pmsm;
 
 	/* Used for MSM_CAM_IOCTL_CTRL_CMD_DONE responses */
-	uint8_t ctrl_data[50];
+	uint8_t ctrl_data[max_control_command_size];
 	struct msm_ctrl_cmd ctrl;
 	struct msm_queue_cmd qcmd;
 
@@ -270,9 +272,16 @@ enum msm_camio_clk_type {
 	CAMIO_VFE_PBDG_CLK,
 	CAMIO_CAM_MCLK_CLK,
 	CAMIO_CAMIF_PAD_PBDG_CLK,
-	CAMIO_CSI_CLK,
-	CAMIO_CSI_VFE_CLK,
-	CAMIO_CSI_PCLK,
+
+	CAMIO_CSI0_VFE_CLK,
+	CAMIO_CSI1_VFE_CLK,
+	CAMIO_VFE_PCLK,
+
+	CAMIO_CSI_SRC_CLK,
+	CAMIO_CSI0_CLK,
+	CAMIO_CSI1_CLK,
+	CAMIO_CSI0_PCLK,
+	CAMIO_CSI1_PCLK,
 	CAMIO_MAX_CLK
 };
 
@@ -331,11 +340,9 @@ void msm_camio_disable(struct platform_device *);
 int msm_camio_probe_on(struct platform_device *);
 int msm_camio_probe_off(struct platform_device *);
 int msm_camio_csi_config(struct msm_camera_csi_params *csi_params);
-int request_axi_qos(uint32_t freq);
+int add_axi_qos(void);
 int update_axi_qos(uint32_t freq);
 void release_axi_qos(void);
-int msm_camio_read_camif_status(void);
-
 void msm_io_w(u32 data, void __iomem *addr);
 void msm_io_w_mb(u32 data, void __iomem *addr);
 u32 msm_io_r(void __iomem *addr);
